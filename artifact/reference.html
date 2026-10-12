@@ -1,0 +1,2850 @@
+<title>레퍼런스</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap">
+<style>
+/* 레퍼런스 — 토스 느낌: 흰 바탕, 회색 면, 파란 단추, 큰 둥근 모서리, 굵고 또렷한 글자 */
+
+:root {
+  --blue: #3182f6;
+  --blue-press: #1b64da;
+  --blue-soft: #e8f3ff;
+  --text: #191f28;
+  --text-2: #4e5968;
+  --text-3: #8b95a1;
+  --line: #e5e8eb;
+  --bg: #ffffff;
+  --bg-2: #f2f4f6;
+  --bg-3: #f9fafb;
+  --red: #f04452;
+  --danger-bg: #ffeeee;
+  --card: #ffffff;
+  --shadow: 0 2px 12px rgba(0, 29, 58, 0.06);
+  --sheet-shadow: 0 -8px 40px rgba(0, 0, 0, 0.12);
+  --radius: 20px;
+  --tabbar-h: 64px;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --blue: #3182f6;
+    --blue-press: #4f95f7;
+    --blue-soft: #1c2a3f;
+    --text: #f9fafb;
+    --text-2: #c3c8cf;
+    --text-3: #8b95a1;
+    --line: #2c2c35;
+    --bg: #17171c;
+    --bg-2: #202027;
+    --bg-3: #1d1d23;
+    --card: #202027;
+    --shadow: none;
+    --sheet-shadow: 0 -8px 40px rgba(0, 0, 0, 0.5);
+    color-scheme: dark;
+      --danger-bg: #3a1f23;
+  } }
+:root[data-theme="dark"] {
+    --blue: #3182f6;
+    --blue-press: #4f95f7;
+    --blue-soft: #1c2a3f;
+    --text: #f9fafb;
+    --text-2: #c3c8cf;
+    --text-3: #8b95a1;
+    --line: #2c2c35;
+    --bg: #17171c;
+    --bg-2: #202027;
+    --bg-3: #1d1d23;
+    --card: #202027;
+    --shadow: none;
+    --sheet-shadow: 0 -8px 40px rgba(0, 0, 0, 0.5);
+    color-scheme: dark;
+      --danger-bg: #3a1f23;
+  }
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Pretendard Variable', Pretendard, 'Noto Sans KR', -apple-system, BlinkMacSystemFont, system-ui, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  letter-spacing: -0.01em;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+button, input, textarea { font: inherit; color: inherit; letter-spacing: inherit; }
+button { cursor: pointer; border: 0; background: none; padding: 0; }
+svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+[hidden] { display: none !important; }
+
+/* ── 상단 ── */
+.topbar {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20;
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: saturate(180%) blur(16px);
+  -webkit-backdrop-filter: saturate(180%) blur(16px);
+}
+.topbar-inner {
+  max-width: 1080px; margin: 0 auto; height: 56px;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 20px;
+}
+.brand { font-size: 22px; font-weight: 800; margin: 0; letter-spacing: -0.03em; cursor: pointer; }
+.text-btn { color: var(--text-2); font-weight: 600; font-size: 15px; padding: 8px 10px; border-radius: 10px; }
+.text-btn:active { background: var(--bg-2); }
+.text-btn.small { font-size: 14px; padding: 6px 8px; }
+
+.page {
+  max-width: 1080px; margin: 0 auto;
+  padding: 8px 20px calc(var(--tabbar-h) + 100px + env(safe-area-inset-bottom));
+}
+
+/* ── 검색 · 필터 ── */
+.search {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--bg-2); border-radius: 14px; height: 50px; padding: 0 16px;
+  color: var(--text-3);
+}
+.search svg { width: 20px; height: 20px; flex: none; }
+.search input {
+  flex: 1; min-width: 0; border: 0; outline: 0; background: transparent;
+  font-size: 17px; color: var(--text);
+}
+.search input::placeholder { color: var(--text-3); }
+.search input::-webkit-search-cancel-button { filter: grayscale(1); }
+
+.filter-row { display: flex; gap: 8px; margin-top: 14px; overflow-x: auto; scrollbar-width: none; }
+.filter-row::-webkit-scrollbar, .chips::-webkit-scrollbar { display: none; }
+.select-chip {
+  display: inline-flex; align-items: center; gap: 4px; flex: none;
+  height: 36px; padding: 0 12px 0 14px; border-radius: 18px;
+  background: var(--bg-2); color: var(--text-2); font-weight: 600; font-size: 14px;
+}
+.select-chip svg { width: 16px; height: 16px; }
+.select-chip.on { background: var(--blue-soft); color: var(--blue); }
+#viewModeBtn { padding: 0 14px; }
+
+.chips { display: flex; gap: 8px; margin-top: 10px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.chip {
+  flex: none; height: 34px; padding: 0 14px; border-radius: 17px;
+  border: 1px solid var(--line); background: var(--bg); color: var(--text-2);
+  font-size: 14px; font-weight: 500; white-space: nowrap;
+}
+.chip.on { background: var(--text); border-color: var(--text); color: var(--bg); font-weight: 600; }
+
+.count { color: var(--text-3); font-size: 14px; font-weight: 500; margin: 18px 2px 10px; }
+
+/* ── 카드 목록 ── */
+.grid { columns: 2; column-gap: 12px; }
+@media (min-width: 640px) { .grid { columns: 3; column-gap: 16px; } }
+@media (min-width: 960px) { .grid { columns: 4; } }
+.item {
+  break-inside: avoid; display: block; width: 100%; text-align: left;
+  margin: 0 0 14px; border-radius: 16px; overflow: hidden;
+  background: var(--card); transition: transform .15s ease;
+}
+.item:active { transform: scale(0.98); }
+.item-img { display: block; width: 100%; height: auto; background: var(--bg-2); border-radius: 16px; min-height: 80px; }
+.item-noimg {
+  border-radius: 16px; background: var(--bg-2); padding: 16px; color: var(--text-2);
+  font-size: 15px; line-height: 1.55; display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden;
+}
+.item-meta { padding: 8px 4px 2px; }
+.item-title { font-weight: 700; font-size: 15px; line-height: 1.35; margin: 0; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.item-artist { color: var(--text-3); font-size: 13px; font-weight: 500; margin-top: 2px; }
+.item-count {
+  position: absolute; right: 8px; top: 8px; background: rgba(0,0,0,.55); color: #fff;
+  font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 10px;
+}
+.item-media { position: relative; }
+
+/* 목록 보기 */
+.grid.rows { columns: 1; }
+.grid.rows .item { display: flex; gap: 14px; align-items: center; margin: 0; padding: 12px 0; border-radius: 0; border-bottom: 1px solid var(--line); }
+.grid.rows .item-media { flex: none; width: 64px; height: 64px; }
+.grid.rows .item-img, .grid.rows .item-noimg { width: 64px; height: 64px; min-height: 0; object-fit: cover; border-radius: 12px; padding: 0; font-size: 0; }
+.grid.rows .item-count { display: none; }
+.grid.rows .item-meta { padding: 0; min-width: 0; }
+.grid.rows .item-memo { display: block; }
+.item-memo { display: none; color: var(--text-2); font-size: 14px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.empty { text-align: center; color: var(--text-3); padding: 64px 20px; font-size: 16px; line-height: 1.7; }
+.empty strong { display: block; color: var(--text); font-size: 18px; margin-bottom: 4px; }
+.empty .btn { margin-top: 18px; }
+
+/* ── 작가 목록 ── */
+.list { list-style: none; margin: 12px 0 0; padding: 0; }
+.list li button {
+  width: 100%; display: flex; align-items: center; gap: 14px; text-align: left;
+  padding: 14px 4px; border-radius: 14px;
+}
+.list li button:active { background: var(--bg-2); }
+.avatar {
+  width: 52px; height: 52px; border-radius: 50%; flex: none; overflow: hidden;
+  background: var(--blue-soft); color: var(--blue); font-weight: 800; font-size: 20px;
+  display: grid; place-items: center;
+}
+.avatar img { width: 100%; height: 100%; object-fit: cover; }
+.avatar.big { width: 72px; height: 72px; font-size: 28px; }
+.list-main { flex: 1; min-width: 0; }
+.list-title { font-weight: 700; font-size: 17px; }
+.list-sub { color: var(--text-3); font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.list-count { color: var(--text-3); font-size: 15px; font-weight: 600; }
+
+/* ── 작가 상세 ── */
+.back { display: inline-flex; align-items: center; gap: 2px; color: var(--text-2); font-weight: 600; font-size: 15px; padding: 6px 8px 6px 0; }
+.back svg { width: 20px; height: 20px; }
+.artist-head { display: flex; align-items: center; gap: 16px; margin: 16px 0 20px; }
+.artist-name { font-size: 26px; font-weight: 800; margin: 0; letter-spacing: -0.03em; line-height: 1.25; }
+.sub { color: var(--text-3); margin: 2px 0 0; font-weight: 500; }
+.card { background: var(--bg-2); border-radius: var(--radius); padding: 20px; }
+.ai-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.ai-actions { display: flex; align-items: center; gap: 4px; }
+.badge { display: inline-flex; align-items: center; gap: 4px; background: var(--blue-soft); color: var(--blue); font-weight: 700; font-size: 13px; padding: 4px 10px; border-radius: 8px; }
+.ai-text { white-space: pre-line; margin: 14px 0 0; font-size: 16px; line-height: 1.75; color: var(--text); }
+.ai-text.muted { color: var(--text-3); }
+.ai-edit { margin-top: 14px; }
+.ai-edit-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+.sources { list-style: none; padding: 0; margin: 12px 0 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.sources a { display: inline-block; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: var(--text-2); background: var(--bg); border-radius: 8px; padding: 4px 10px; text-decoration: none; }
+.ai-note { color: var(--text-3); font-size: 13px; margin: 10px 0 0; }
+.ai-note:empty { display: none; }
+.section-title { font-size: 20px; font-weight: 800; margin: 32px 0 14px; }
+
+/* ── 단추 ── */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 52px; padding: 0 20px; border-radius: 14px;
+  background: var(--blue); color: #fff; font-weight: 700; font-size: 17px;
+  transition: background .15s, transform .1s;
+}
+.btn:active { background: var(--blue-press); transform: scale(0.98); }
+.btn:disabled { opacity: .45; pointer-events: none; }
+.btn.small { height: 36px; padding: 0 12px; border-radius: 10px; font-size: 14px; }
+.btn.ghost { background: var(--bg-2); color: var(--text-2); }
+.btn.ghost:active { background: var(--line); }
+.btn.danger { background: var(--danger-bg); color: var(--red); }
+.btn.block { width: 100%; }
+.btn-row { display: flex; gap: 8px; }
+.btn-row .btn { flex: 1; }
+.btn.loading { color: transparent; position: relative; }
+.btn.loading::after {
+  content: ''; position: absolute; width: 20px; height: 20px; border-radius: 50%;
+  border: 2.5px solid rgba(255,255,255,.4); border-top-color: #fff; animation: spin .7s linear infinite;
+}
+.btn.ghost.loading::after { border-color: var(--line); border-top-color: var(--text-2); }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.fab {
+  position: fixed; right: max(20px, calc(50% - 520px)); bottom: calc(var(--tabbar-h) + 20px + env(safe-area-inset-bottom)); z-index: 25;
+  width: 58px; height: 58px; border-radius: 50%; background: var(--blue); color: #fff;
+  display: grid; place-items: center; box-shadow: 0 6px 20px rgba(49,130,246,.4);
+  transition: transform .15s;
+}
+.fab:active { transform: scale(0.94); background: var(--blue-press); }
+.fab svg { width: 28px; height: 28px; stroke-width: 2.4; }
+
+/* ── 아래 탭 ── */
+.tabbar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+  height: calc(var(--tabbar-h) + env(safe-area-inset-bottom)); padding-bottom: env(safe-area-inset-bottom);
+  display: flex; justify-content: center; gap: 0;
+  background: var(--bg); border-top: 1px solid var(--line);
+}
+.tab {
+  flex: 1; max-width: 200px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  color: var(--text-3); font-size: 12px; font-weight: 600;
+}
+.tab svg { width: 24px; height: 24px; }
+.tab.active { color: var(--text); }
+
+/* ── 바텀시트 ── */
+.sheet-backdrop { position: fixed; inset: 0; z-index: 40; background: rgba(0,0,0,.45); animation: fade .2s ease; }
+.sheet {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 41;
+  max-width: 640px; margin: 0 auto; max-height: 92dvh;
+  background: var(--bg); border-radius: 24px 24px 0 0; box-shadow: var(--sheet-shadow);
+  display: flex; flex-direction: column; animation: up .28s cubic-bezier(.2,.8,.2,1);
+}
+@media (min-width: 720px) {
+  .sheet { bottom: auto; top: 50%; transform: translateY(-50%); border-radius: 24px; max-height: 88dvh; animation: pop .22s ease; }
+}
+.sheet-handle { width: 40px; height: 5px; border-radius: 3px; background: var(--line); margin: 10px auto 0; flex: none; }
+.sheet-body { overflow-y: auto; padding: 16px 20px calc(20px + env(safe-area-inset-bottom)); overscroll-behavior: contain; }
+.sheet h2 { font-size: 22px; font-weight: 800; margin: 4px 0 18px; letter-spacing: -0.02em; }
+@keyframes up { from { transform: translateY(100%); } }
+@keyframes pop { from { opacity: 0; transform: translateY(-46%); } }
+@keyframes fade { from { opacity: 0; } }
+
+/* 선택 목록 */
+.options { list-style: none; margin: 0; padding: 0; }
+.options button { width: 100%; text-align: left; display: flex; align-items: center; justify-content: space-between; padding: 16px 4px; font-size: 17px; font-weight: 500; border-radius: 12px; }
+.options button:active { background: var(--bg-2); }
+.options button.on { color: var(--blue); font-weight: 700; }
+.options .n { color: var(--text-3); font-size: 15px; }
+
+/* 입력 */
+.form { display: flex; flex-direction: column; gap: 18px; }
+.label { display: block; color: var(--text-2); font-size: 14px; font-weight: 600; margin-bottom: 8px; }
+.field {
+  width: 100%; border: 0; outline: 0; background: var(--bg-2); border-radius: 14px;
+  padding: 14px 16px; font-size: 17px; color: var(--text); resize: vertical;
+  box-shadow: inset 0 0 0 2px transparent; transition: box-shadow .15s;
+}
+.field:focus { box-shadow: inset 0 0 0 2px var(--blue); background: var(--bg); }
+.field::placeholder { color: var(--text-3); }
+textarea.field { min-height: 120px; line-height: 1.6; }
+
+.photos { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
+.photos::-webkit-scrollbar { display: none; }
+.photo, .photo-add {
+  flex: none; width: 92px; height: 92px; border-radius: 14px; position: relative; overflow: hidden; background: var(--bg-2);
+}
+.photo img { width: 100%; height: 100%; object-fit: cover; }
+.photo.uploading img { opacity: .4; }
+.photo.uploading::after {
+  content: ''; position: absolute; left: 50%; top: 50%; width: 22px; height: 22px; margin: -11px;
+  border-radius: 50%; border: 2.5px solid rgba(49,130,246,.25); border-top-color: var(--blue); animation: spin .7s linear infinite;
+}
+.photo-del {
+  position: absolute; right: 4px; top: 4px; width: 24px; height: 24px; border-radius: 50%;
+  background: rgba(0,0,0,.6); color: #fff; display: grid; place-items: center;
+}
+.photo-del svg { width: 14px; height: 14px; stroke-width: 2.6; }
+.photo-add { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: var(--text-3); font-size: 13px; font-weight: 600; border: 1.5px dashed var(--line); background: var(--bg-3); }
+
+.tag-input { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; background: var(--bg-2); border-radius: 14px; padding: 10px 12px; min-height: 52px; }
+.tag-input:focus-within { box-shadow: inset 0 0 0 2px var(--blue); background: var(--bg); }
+.tag-input input { flex: 1; min-width: 120px; border: 0; outline: 0; background: transparent; font-size: 16px; padding: 4px; }
+.tag {
+  display: inline-flex; align-items: center; gap: 2px; background: var(--blue-soft); color: var(--blue);
+  font-size: 14px; font-weight: 600; border-radius: 8px; padding: 4px 6px 4px 10px;
+}
+.tag button { display: grid; place-items: center; width: 18px; height: 18px; color: inherit; }
+.tag button svg { width: 12px; height: 12px; stroke-width: 2.8; }
+.hint { color: var(--text-3); font-size: 13px; margin-top: 6px; }
+
+/* 상세 */
+.carousel { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; gap: 8px; margin: 0 -20px; padding: 0 20px; scrollbar-width: none; }
+.carousel::-webkit-scrollbar { display: none; }
+.carousel img { flex: none; width: 100%; max-height: 60dvh; object-fit: contain; border-radius: 16px; background: var(--bg-2); scroll-snap-align: center; cursor: zoom-in; }
+.carousel.multi img { width: 88%; }
+.dots { text-align: center; color: var(--text-3); font-size: 13px; margin-top: 8px; font-weight: 600; }
+.detail-title { font-size: 24px; font-weight: 800; margin: 18px 0 4px; letter-spacing: -0.02em; line-height: 1.3; }
+.detail-artist { display: inline-flex; align-items: center; gap: 2px; color: var(--blue); font-weight: 700; font-size: 16px; }
+.detail-artist svg { width: 16px; height: 16px; }
+.detail-memo { white-space: pre-wrap; word-break: break-word; font-size: 17px; line-height: 1.75; margin: 16px 0 0; }
+.detail-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 16px; }
+.detail-tags button { background: var(--bg-2); color: var(--text-2); font-size: 14px; font-weight: 600; border-radius: 8px; padding: 6px 10px; }
+.detail-source { display: block; margin-top: 14px; color: var(--text-2); font-size: 14px; word-break: break-all; }
+.detail-date { color: var(--text-3); font-size: 13px; margin-top: 16px; }
+.detail-actions { margin-top: 24px; }
+
+/* 사진 크게 보기 */
+.viewer { position: fixed; inset: 0; z-index: 60; background: #000; display: grid; place-items: center; animation: fade .15s; }
+.viewer img { max-width: 100vw; max-height: 100dvh; object-fit: contain; }
+.viewer-close { position: absolute; top: calc(12px + env(safe-area-inset-top)); right: 12px; width: 44px; height: 44px; border-radius: 50%; background: rgba(255,255,255,.15); color: #fff; display: grid; place-items: center; }
+
+/* 알림 */
+.toast {
+  position: fixed; left: 50%; bottom: calc(var(--tabbar-h) + 24px + env(safe-area-inset-bottom)); z-index: 80;
+  transform: translate(-50%, 20px); opacity: 0; pointer-events: none;
+  background: #333d4b; color: #fff; padding: 14px 20px; border-radius: 14px; font-size: 15px; font-weight: 600;
+  max-width: calc(100vw - 32px); width: max-content; transition: opacity .2s, transform .2s;
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+.skeleton { break-inside: avoid; margin-bottom: 14px; border-radius: 16px; background: var(--bg-2); animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .55; } }
+
+.top-actions { display: flex; align-items: center; gap: 4px; }
+.key-btn {
+  display: inline-flex; align-items: center; gap: 4px; height: 36px; padding: 0 12px 0 10px; border-radius: 18px;
+  background: var(--text); color: var(--bg); font-weight: 700; font-size: 14px;
+}
+.key-btn svg { width: 18px; height: 18px; }
+.key-btn:active { opacity: .8; }
+
+/* 관리 화면 — 작업 계획 보드 */
+
+.back-link { display: inline-flex; align-items: center; gap: 2px; color: var(--text-2); font-weight: 600; font-size: 15px; text-decoration: none; }
+.back-link svg { width: 20px; height: 20px; }
+.admin-title { font-size: 28px; font-weight: 800; margin: 12px 0 4px; letter-spacing: -0.03em; }
+.admin-sub { color: var(--text-2); margin: 0 0 24px; }
+.login-card { max-width: 420px; }
+.login-text { margin: 0 0 14px; font-weight: 600; }
+
+.new-board {
+  width: 100%; display: flex; align-items: center; gap: 14px; text-align: left;
+  background: var(--blue-soft); border-radius: var(--radius); padding: 18px;
+}
+.new-board strong { display: block; font-size: 17px; color: var(--blue); }
+.new-board small { color: var(--text-2); font-size: 14px; }
+.new-plus { width: 48px; height: 48px; border-radius: 14px; background: var(--blue); color: #fff; display: grid; place-items: center; flex: none; }
+.board-list { list-style: none; margin: 12px 0 0; padding: 0; }
+.board-item { display: flex; gap: 14px; align-items: center; padding: 14px 4px; color: inherit; text-decoration: none; border-radius: 14px; }
+.board-item:active { background: var(--bg-2); }
+.board-thumb { width: 72px; height: 56px; border-radius: 12px; background: var(--bg-2); overflow: hidden; display: grid; place-items: center; color: var(--text-3); flex: none; }
+.board-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.board-main { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.board-main strong { font-size: 17px; }
+.board-meta { color: var(--text-3); font-size: 14px; }
+.k-chips { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+.k-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 700; color: var(--text-2); background: var(--bg-2); border-radius: 6px; padding: 2px 6px; }
+.k-chip i, .k-dot { width: 10px; height: 10px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0,0,0,.15); display: inline-block; flex: none; }
+
+/* ── 편집 화면 ── */
+body.editing { overflow: hidden; overscroll-behavior: none; }
+.editor { position: fixed; inset: 0; display: flex; flex-direction: column; background: var(--bg-2); }
+.ed-top {
+  height: calc(56px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) 8px 0; flex: none;
+  display: flex; align-items: center; gap: 4px; background: var(--bg); border-bottom: 1px solid var(--line); z-index: 5;
+}
+.icon-btn { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; color: var(--text-2); flex: none; }
+.icon-btn:active { background: var(--bg-2); }
+.icon-btn svg { width: 22px; height: 22px; }
+.ed-title { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font-size: 18px; font-weight: 800; padding: 6px 8px; border-radius: 10px; }
+.ed-title:focus { background: var(--bg-2); }
+.save-state { color: var(--text-3); font-size: 13px; font-weight: 600; white-space: nowrap; }
+.panel-toggle { height: 36px; padding: 0 12px; border-radius: 18px; background: var(--bg-2); color: var(--text-2); font-weight: 700; font-size: 14px; white-space: nowrap; }
+.panel-toggle.on { background: var(--text); color: var(--bg); }
+
+.ed-body { position: relative; flex: 1; min-height: 0; display: flex; }
+.stage { flex: 1; min-width: 0; position: relative; touch-action: none; overflow: hidden; }
+.stage svg { width: 100%; height: 100%; display: block; user-select: none; -webkit-user-select: none; }
+.stage[data-tool="pen"] { cursor: crosshair; }
+.stage[data-tool="light"], .stage[data-tool="text"] { cursor: copy; }
+.stage[data-tool="eraser"] { cursor: cell; }
+.stage[data-tool="select"] { cursor: grab; }
+.stage .light { cursor: move; }
+
+.toolbar {
+  position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 4;
+  display: flex; align-items: center; gap: 2px; padding: 6px; border-radius: 20px;
+  background: var(--bg); box-shadow: 0 6px 24px rgba(0, 29, 58, .14); max-width: calc(100% - 24px); overflow-x: auto; scrollbar-width: none;
+}
+.toolbar::-webkit-scrollbar { display: none; }
+.tool { flex: none; width: 58px; height: 54px; border-radius: 14px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; color: var(--text-2); font-size: 11px; font-weight: 700; }
+.tool svg { width: 22px; height: 22px; }
+.tool.active { background: var(--blue); color: #fff; }
+.tool:disabled { opacity: .3; }
+.tool-sep { width: 1px; height: 32px; background: var(--line); margin: 0 4px; flex: none; }
+
+.pen-opts {
+  position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(92px + env(safe-area-inset-bottom)); z-index: 4;
+  display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-radius: 16px; background: var(--bg); box-shadow: 0 4px 16px rgba(0, 29, 58, .1);
+}
+.swatches, .widths { display: flex; gap: 6px; align-items: center; }
+.swatches button { width: 26px; height: 26px; border-radius: 50%; background: var(--c); box-shadow: 0 0 0 2px var(--bg), 0 0 0 2px transparent; }
+.swatches button.on { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--blue); }
+.swatches.inline button { width: 30px; height: 30px; }
+.widths { border-left: 1px solid var(--line); padding-left: 12px; }
+.widths button { width: 30px; height: 30px; border-radius: 10px; display: grid; place-items: center; }
+.widths button i { display: block; border-radius: 50%; background: var(--text); }
+.widths button.on { background: var(--blue-soft); }
+
+.zoom { position: absolute; left: 12px; top: 12px; z-index: 4; display: flex; align-items: center; background: var(--bg); border-radius: 14px; box-shadow: 0 2px 10px rgba(0, 29, 58, .08); }
+.zoom .icon-btn { width: 36px; height: 36px; }
+.zoom-val { min-width: 54px; font-size: 13px; font-weight: 700; color: var(--text-2); }
+
+/* 패널: 넓은 화면에서는 오른쪽, 휴대폰에서는 아래에서 올라옴 */
+.panel { width: 360px; flex: none; background: var(--bg); border-left: 1px solid var(--line); overflow-y: auto; z-index: 6; }
+.panel-grip { display: none; }
+.panel-inner { padding: 20px; display: flex; flex-direction: column; gap: 28px; padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
+.panel-toggle { display: none; }
+@media (max-width: 899px) {
+  .panel-toggle { display: inline-block; }
+  .panel {
+    position: absolute; left: 0; right: 0; bottom: 0; width: auto; max-height: 58%;
+    border-left: 0; border-radius: 24px 24px 0 0; box-shadow: var(--sheet-shadow);
+    transform: translateY(105%); transition: transform .28s cubic-bezier(.2,.8,.2,1);
+  }
+  .panel.open { transform: none; }
+  .panel-grip { display: block; position: sticky; top: 0; height: 22px; background: var(--bg); z-index: 1; cursor: pointer; }
+  .panel-grip::after { content: ''; display: block; width: 40px; height: 5px; border-radius: 3px; background: var(--line); margin: 10px auto 0; }
+  .panel-inner { padding-top: 6px; }
+}
+.panel-h { font-size: 17px; font-weight: 800; margin: 0 0 12px; display: flex; align-items: center; gap: 6px; }
+.panel-n { color: var(--blue); font-size: 15px; }
+.panel-empty { color: var(--text-3); font-size: 14px; margin: 0; list-style: none; }
+.prop-head { display: flex; align-items: center; justify-content: space-between; }
+.prop-head .panel-h { margin: 0; }
+#propBox { display: flex; flex-direction: column; gap: 14px; background: var(--bg-3); border: 1px solid var(--line); border-radius: 18px; padding: 16px; }
+.prop { display: flex; flex-direction: column; gap: 6px; }
+.prop > span { color: var(--text-2); font-size: 13px; font-weight: 700; display: flex; justify-content: space-between; }
+.prop b { color: var(--text); }
+.field.sm { padding: 10px 12px; font-size: 15px; border-radius: 12px; min-height: 0; }
+textarea.field.sm { min-height: 70px; }
+.seg { display: flex; flex-wrap: wrap; gap: 4px; }
+.seg button { padding: 7px 10px; border-radius: 10px; background: var(--bg-2); color: var(--text-2); font-size: 13px; font-weight: 700; }
+.seg button.on { background: var(--text); color: var(--bg); }
+
+input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 28px; background: transparent; }
+input[type=range]::-webkit-slider-runnable-track { height: 6px; border-radius: 3px; background: var(--line); }
+input[type=range]::-moz-range-track { height: 6px; border-radius: 3px; background: var(--line); }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 24px; height: 24px; margin-top: -9px; border-radius: 50%; background: #fff; box-shadow: 0 1px 6px rgba(0,0,0,.25); border: 0; }
+input[type=range]::-moz-range-thumb { width: 24px; height: 24px; border-radius: 50%; background: #fff; box-shadow: 0 1px 6px rgba(0,0,0,.25); border: 0; }
+.kelvin-range::-webkit-slider-runnable-track { background: linear-gradient(90deg, #ff8b14, #ffb46b, #ffd1a3, #ffe4ce, #fff4ed, #f5f3ff, #e3e9ff, #cfdaff); }
+.kelvin-range::-moz-range-track { background: linear-gradient(90deg, #ff8b14, #ffb46b, #ffd1a3, #ffe4ce, #fff4ed, #f5f3ff, #e3e9ff, #cfdaff); }
+
+.k-preview {
+  display: flex; align-items: baseline; gap: 10px; padding: 14px 16px; border-radius: 14px;
+  background: radial-gradient(circle at 20% 50%, var(--k), color-mix(in srgb, var(--k) 40%, #191f28));
+  color: #191f28;
+}
+.k-preview strong { font-size: 24px; font-weight: 800; }
+.k-preview span { font-size: 14px; font-weight: 700; opacity: .8; }
+.k-presets { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.k-presets button { display: flex; align-items: center; gap: 6px; padding: 8px; border-radius: 10px; background: var(--bg-2); font-size: 13px; font-weight: 700; flex-wrap: wrap; line-height: 1.2; text-align: left; }
+.k-presets button i { width: 14px; height: 14px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0,0,0,.15); }
+.k-presets button small { width: 100%; color: var(--text-3); font-weight: 600; font-size: 11px; padding-left: 20px; }
+.k-presets button.on { box-shadow: inset 0 0 0 2px var(--blue); }
+
+.light-list, .todo-list { list-style: none; margin: 0; padding: 0; }
+.light-list button { width: 100%; display: flex; align-items: center; gap: 10px; padding: 10px 8px; border-radius: 12px; text-align: left; }
+.light-list button.on { background: var(--blue-soft); }
+.light-list .k-dot { width: 16px; height: 16px; }
+.ll-name { flex: 1; min-width: 0; font-weight: 700; font-size: 15px; display: flex; flex-direction: column; }
+.ll-name small { color: var(--text-3); font-size: 12px; font-weight: 600; }
+.ll-k { font-weight: 800; font-size: 15px; }
+.ll-p { color: var(--text-3); font-size: 13px; width: 40px; text-align: right; }
+
+.todo-list li { display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.todo-list label { position: relative; flex: none; margin-top: 1px; }
+.todo-list input[type=checkbox] { position: absolute; opacity: 0; width: 24px; height: 24px; margin: 0; cursor: pointer; }
+.check { display: block; width: 24px; height: 24px; border-radius: 8px; border: 2px solid var(--line); background: var(--bg); }
+.todo-list input:checked + .check { background: var(--blue) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 12 5 5 9-10'/%3E%3C/svg%3E") center/16px no-repeat; border-color: var(--blue); }
+.todo-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.todo-text { font-size: 15px; font-weight: 600; outline: 0; border-radius: 6px; word-break: break-word; }
+.todo-text:focus { background: var(--bg-2); }
+.done .todo-text { color: var(--text-3); text-decoration: line-through; }
+.todo-date { color: var(--text-3); font-size: 12px; font-weight: 600; }
+.todo-date.late { color: var(--red); }
+.todo-del { width: 28px; height: 28px; display: grid; place-items: center; color: var(--text-3); border-radius: 8px; flex: none; }
+.todo-del svg { width: 16px; height: 16px; }
+.todo-add { display: grid; grid-template-columns: 1fr auto; gap: 6px; margin-top: 10px; }
+.todo-add .field:first-child { grid-column: 1 / -1; }
+.todo-add .field { padding: 10px 12px; font-size: 15px; border-radius: 12px; min-width: 0; }
+.todo-add .field.date { width: 100%; font-size: 14px; }
+.todo-add .btn { height: auto; }
+
+@media (max-width: 520px) {
+  .save-state { display: none; }
+  .tool { width: 50px; }
+  .pen-opts { bottom: calc(84px + env(safe-area-inset-bottom)); }
+}
+
+/* 아이콘용 전역 svg 규칙(선 굵기·색)이 도화지 안까지 번지지 않도록 기본값으로 돌립니다. */
+.stage svg#board { fill: #000; stroke: none; stroke-width: 1; stroke-linecap: butt; stroke-linejoin: miter; width: 100%; height: 100%; }
+
+.admin-back { display: inline-flex; align-items: center; gap: 2px; color: var(--text-2); font-weight: 600; font-size: 15px; }
+.admin-back svg { width: 20px; height: 20px; }
+
+</style>
+<div id="mainScreen">
+
+  <header class="topbar">
+    <div class="topbar-inner">
+      <h1 class="brand" id="brand">레퍼런스</h1>
+      <div class="top-actions">
+        <button class="text-btn" id="loginBtn" type="button">로그인</button>
+        <button class="key-btn" id="adminBtn" type="button" title="관리 · 작업 계획 (키보드 \ 키)">
+          <svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+          <span>계획</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="page">
+    <!-- 전체 레퍼런스 -->
+    <section id="view-home" class="view">
+      <label class="search">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="search" type="search" placeholder="제목, 작가, 메모, 태그로 찾기" autocomplete="off" />
+      </label>
+
+      <div class="filter-row">
+        <button class="select-chip" id="artistFilterBtn" type="button"><span id="artistFilterLabel">모든 작가</span><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
+        <button class="select-chip" id="sortBtn" type="button"><span id="sortLabel">최신순</span><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
+        <button class="select-chip" id="viewModeBtn" type="button" aria-label="보기 방식 바꾸기"><span id="viewModeLabel">사진으로</span></button>
+      </div>
+      <div class="chips" id="tagChips"></div>
+
+      <p class="count" id="resultCount"></p>
+      <div class="grid" id="grid"></div>
+      <div class="empty" id="empty" hidden></div>
+    </section>
+
+    <!-- 작가별 -->
+    <section id="view-artists" class="view" hidden>
+      <label class="search">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="artistSearch" type="search" placeholder="작가 이름 찾기" autocomplete="off" />
+      </label>
+      <ul class="list" id="artistList"></ul>
+      <div class="empty" id="artistEmpty" hidden></div>
+    </section>
+
+    <!-- 작가 한 명 -->
+    <section id="view-artist" class="view" hidden>
+      <button class="back" id="artistBack" type="button"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>작가 목록</button>
+      <div class="artist-head">
+        <div class="avatar big" id="artistAvatar"></div>
+        <div>
+          <h2 class="artist-name" id="artistName"></h2>
+          <p class="sub" id="artistCount"></p>
+        </div>
+      </div>
+      <div class="card ai-card">
+        <div class="ai-top">
+          <span class="badge" id="aiBadge">작가 소개</span>
+          <div class="ai-actions">
+            <button class="text-btn small" id="aiEditBtn" type="button">직접 쓰기</button>
+            <button class="btn small" id="aiBtn" type="button">AI로 설명 만들기</button>
+          </div>
+        </div>
+        <p class="ai-text" id="aiText"></p>
+        <textarea class="field ai-edit" id="aiEdit" rows="6" hidden></textarea>
+        <div class="ai-edit-actions" id="aiEditActions" hidden>
+          <button class="btn ghost small" id="aiEditCancel" type="button">취소</button>
+          <button class="btn small" id="aiEditSave" type="button">저장</button>
+        </div>
+        <ul class="sources" id="aiSources"></ul>
+        <p class="ai-note" id="aiNote"></p>
+      </div>
+      <h3 class="section-title">이 작가의 레퍼런스</h3>
+      <div class="grid" id="artistGrid"></div>
+    </section>
+  </main>
+
+  <button class="fab" id="addBtn" type="button" aria-label="레퍼런스 추가">
+    <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+  </button>
+
+  <nav class="tabbar">
+    <button class="tab active" data-tab="home" type="button">
+      <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="2"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2"/></svg>
+      <span>전체</span>
+    </button>
+    <button class="tab" data-tab="artists" type="button">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg>
+      <span>작가별</span>
+    </button>
+  </nav>
+
+
+</div>
+<div id="adminScreen" hidden>
+
+  <!-- 보드 목록 -->
+  <div id="listScreen">
+    <header class="topbar">
+      <div class="topbar-inner">
+        <button class="admin-back" id="adminBackBtn" type="button"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>레퍼런스</button>
+        <button class="text-btn" id="logoutBtn" type="button" hidden>로그아웃</button>
+      </div>
+    </header>
+    <main class="page">
+      <h1 class="admin-title">작업 계획</h1>
+      <p class="admin-sub">조명 위치와 색온도(K), 앞으로 할 일을 직접 그려서 계획해요.</p>
+
+      <div id="loginBox" class="card login-card" hidden>
+        <p class="login-text">관리 화면은 비밀번호가 필요해요.</p>
+        <form class="form" id="loginForm">
+          <input class="field" id="pw" type="password" autocomplete="current-password" placeholder="비밀번호" required />
+          <button class="btn block" id="pwBtn" type="submit">로그인</button>
+        </form>
+      </div>
+
+      <div id="boardsBox" hidden>
+        <button class="new-board" id="newBoard" type="button">
+          <span class="new-plus"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span>
+          <span><strong>새 계획 만들기</strong><small>빈 도화지에 그리거나 도면·사진 위에 그려요</small></span>
+        </button>
+        <ul class="board-list" id="boardList"></ul>
+      </div>
+    </main>
+  </div>
+
+  <!-- 보드 편집 -->
+  <div id="editorScreen" class="editor" hidden>
+    <header class="ed-top">
+      <button class="icon-btn" id="edBack" type="button" aria-label="목록으로"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
+      <input class="ed-title" id="edTitle" maxlength="200" placeholder="계획 이름" />
+      <span class="save-state" id="saveState"></span>
+      <button class="icon-btn" id="edMore" type="button" aria-label="더보기"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/></svg></button>
+      <button class="panel-toggle" id="panelToggle" type="button">계획 · 조명 목록</button>
+    </header>
+
+    <div class="ed-body">
+      <div class="stage" id="stage">
+        <svg id="board" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid meet">
+          <defs>
+            <pattern id="gridSmall" width="20" height="20" patternUnits="userSpaceOnUse"><path d="M20 0H0V20" fill="none" stroke="#f2f4f6" stroke-width="1"/></pattern>
+            <pattern id="gridBig" width="100" height="100" patternUnits="userSpaceOnUse"><rect width="100" height="100" fill="url(#gridSmall)"/><path d="M100 0H0V100" fill="none" stroke="#e5e8eb" stroke-width="1.5"/></pattern>
+            <filter id="soft" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="6"/></filter>
+          </defs>
+          <rect id="paper" x="-50000" y="-50000" width="100000" height="100000" fill="#ffffff"/>
+          <rect id="gridRect" x="-50000" y="-50000" width="100000" height="100000" fill="url(#gridBig)"/>
+          <image id="bgImage" x="0" y="0" width="1600" height="1000" preserveAspectRatio="xMidYMid meet" visibility="hidden"/>
+          <g id="layerGlow"></g>
+          <g id="layerStrokes"></g>
+          <g id="layerLights"></g>
+          <g id="layerTexts"></g>
+          <g id="layerSelect"></g>
+        </svg>
+      </div>
+
+      <div class="zoom">
+        <button class="icon-btn" id="zoomOut" type="button" aria-label="작게"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
+        <button class="zoom-val" id="zoomFit" type="button">100%</button>
+        <button class="icon-btn" id="zoomIn" type="button" aria-label="크게"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+      </div>
+
+      <div class="toolbar" id="toolbar">
+        <button class="tool" data-tool="select" type="button" title="선택 · 옮기기 (V)"><svg viewBox="0 0 24 24"><path d="M5 3l14 8-6 2-2 6z"/></svg><span>선택</span></button>
+        <button class="tool active" data-tool="pen" type="button" title="펜 (P)"><svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg><span>펜</span></button>
+        <button class="tool" data-tool="light" type="button" title="조명 놓기 (L)"><svg viewBox="0 0 24 24"><path d="M9 18h6M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7V16h8v-1.3A7 7 0 0 0 12 2z"/></svg><span>조명</span></button>
+        <button class="tool" data-tool="text" type="button" title="글자 (T)"><svg viewBox="0 0 24 24"><path d="M5 5h14M12 5v15"/></svg><span>글자</span></button>
+        <button class="tool" data-tool="eraser" type="button" title="지우개 (E)"><svg viewBox="0 0 24 24"><path d="M20 20H9L4 15a2 2 0 0 1 0-3l8-8a2 2 0 0 1 3 0l5 5a2 2 0 0 1 0 3l-8 8"/></svg><span>지우개</span></button>
+        <span class="tool-sep"></span>
+        <button class="tool" id="undoBtn" type="button" title="되돌리기 (Ctrl+Z)"><svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></svg><span>뒤로</span></button>
+        <button class="tool" id="redoBtn" type="button" title="다시 (Ctrl+Shift+Z)"><svg viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"/><path d="M20 9H9a5 5 0 0 0 0 10h3"/></svg><span>앞으로</span></button>
+      </div>
+
+      <div class="pen-opts" id="penOpts">
+        <div class="swatches" id="swatches"></div>
+        <div class="widths" id="widths"></div>
+      </div>
+
+      <aside class="panel" id="panel">
+        <div class="panel-grip" id="panelGrip"></div>
+        <div class="panel-inner">
+          <section id="propBox" hidden></section>
+
+          <section>
+            <h3 class="panel-h">조명 <span id="lightCount" class="panel-n"></span></h3>
+            <p class="panel-empty" id="lightEmpty">아래 "조명" 도구를 고르고 도화지를 누르면 조명이 놓여요.</p>
+            <ul class="light-list" id="lightList"></ul>
+          </section>
+
+          <section>
+            <h3 class="panel-h">앞으로 할 일 <span id="todoCount" class="panel-n"></span></h3>
+            <ul class="todo-list" id="todoList"></ul>
+            <form class="todo-add" id="todoForm">
+              <input class="field" id="todoText" maxlength="300" placeholder="할 일 적기 (예: 거실 2700K로 교체)" />
+              <input class="field date" id="todoDate" type="date" aria-label="날짜" />
+              <button class="btn small" type="submit">추가</button>
+            </form>
+          </section>
+
+          <section>
+            <h3 class="panel-h">계획 메모</h3>
+            <textarea class="field" id="planNote" rows="6" maxlength="20000" placeholder="전체 방향, 예산, 사야 할 것, 참고한 레퍼런스 등을 자세히 적어두세요"></textarea>
+          </section>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+
+</div>
+
+  <input type="file" id="bgInput" accept="image/*" hidden />
+  <div class="sheet-backdrop" id="backdrop" hidden></div>
+  <div class="sheet" id="sheet" role="dialog" aria-modal="true" hidden>
+    <div class="sheet-handle"></div>
+    <div class="sheet-body" id="sheetBody"></div>
+  </div>
+  <div class="viewer" id="viewer" hidden>
+    <button class="viewer-close" id="viewerClose" type="button" aria-label="닫기"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    <img id="viewerImg" alt="" />
+  </div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script type="module">
+
+// ===== 저장소 연결 (adapter.js) =====
+// Claude 아티팩트용 저장소 연결
+// Cloudflare 서버(_worker.js) 대신 Claude 저장소(db: 글, assets: 사진)와 Claude AI(sample)를 씁니다.
+// 화면 코드가 부르는 api('/api/...') 주소를 그대로 받아서 같은 모양의 답을 돌려줍니다.
+
+const CAPS = (async () => {
+  const c = window.claude;
+  if (!c?.use) return {};
+  const [db, assets, sample, user] = await Promise.all(
+    ['db', 'assets', 'sample', 'user'].map((n) => c.use(n).catch(() => null))
+  );
+  return { db, assets, sample, user };
+})();
+
+const LIMITS = { title: 200, artist: 100, memo: 10000, source: 1000, tag: 40, tags: 30, description: 5000 };
+
+function fail(message, status = 400) {
+  throw Object.assign(new Error(message), { status });
+}
+
+function dbError(err) {
+  const code = err?.code;
+  if (code === 'invalid_argument') fail('저장하지 못했어요. 편집 권한이 없거나 내용이 너무 커요.', 403);
+  if (code === 'quota_exceeded') fail('저장 공간이 가득 찼어요. 오래된 항목을 지워 주세요.', 507);
+  if (code === 'resource_exhausted') fail('너무 빨리 저장하고 있어요. 잠시 뒤 다시 해 주세요.', 429);
+  fail('저장소에 연결하지 못했어요. 잠시 뒤 다시 해 주세요.', 503);
+}
+
+async function need(name) {
+  const caps = await CAPS;
+  if (!caps[name]) {
+    if (name === 'assets') fail('사진은 편집 권한이 있는 사람만 올릴 수 있어요.', 403);
+    if (name === 'sample') fail('이 화면에서는 AI를 쓸 수 없어요.', 503);
+    fail('저장소에 연결하지 못했어요. Claude 에서 이 페이지를 열어 주세요.', 503);
+  }
+  return caps[name];
+}
+
+async function canWrite() {
+  const { user, db } = await CAPS;
+  if (!db) return false;
+  const v = await user?.can('data.write').catch(() => null);
+  return v !== false; // null(모름)이면 일단 허용하고, 실제 저장이 거절되면 그때 알려줍니다
+}
+
+const str = (v, max) => String(v ?? '').trim().slice(0, max);
+
+function cleanItem(body) {
+  const tags = [...new Set((Array.isArray(body.tags) ? body.tags : [])
+    .map((t) => str(t, LIMITS.tag).replace(/^#/, ''))
+    .filter(Boolean))].slice(0, LIMITS.tags);
+  const images = (Array.isArray(body.images) ? body.images : []).map(String).filter((k) => /^[A-Za-z0-9_-]{8,64}$/.test(k)).slice(0, 20);
+  return {
+    title: str(body.title, LIMITS.title),
+    artist: str(body.artist, LIMITS.artist),
+    memo: str(body.memo, LIMITS.memo),
+    source: str(body.source, LIMITS.source),
+    tags,
+    images,
+  };
+}
+
+function toItem(snap) {
+  const d = snap.data();
+  return {
+    id: snap.id, title: d.title || '', artist: d.artist || '', memo: d.memo || '', tags: d.tags || [],
+    source: d.source || '', images: d.images || [], createdAt: d.createdAt || 0, updatedAt: d.updatedAt || 0,
+  };
+}
+
+// 작가 이름 → 저장소 문서 이름 (한글·공백은 문서 이름에 못 쓰므로 해시로 바꿈)
+async function artistKey(name) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(name));
+  return 'a' + [...new Uint8Array(buf)].slice(0, 16).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function allItems(db) {
+  const snap = await db.collection('items').orderBy('createdAt', 'desc').limit(1000).get().catch(dbError);
+  return snap.docs.filter((d) => d.exists).map(toItem);
+}
+
+function boardSummary(data) {
+  const lights = Array.isArray(data.lights) ? data.lights : [];
+  const todos = Array.isArray(data.todos) ? data.todos : [];
+  return {
+    lights: lights.length,
+    kelvins: [...new Set(lights.map((l) => Number(l.k)).filter(Number.isFinite))].sort((a, b) => a - b).slice(0, 8),
+    todos: todos.length,
+    done: todos.filter((t) => t.done).length,
+    bg: typeof data.bg === 'string' ? data.bg : null,
+  };
+}
+
+async function describeWithAi(name, items) {
+  const sample = await need('sample');
+  const mine = items.filter((i) => i.artist === name).slice(0, 15);
+  const titles = mine.map((r) => r.title).filter(Boolean);
+  const tags = [...new Set(mine.flatMap((r) => r.tags))].slice(0, 20);
+  const prompt = [
+    `"${name}"라는 작가(아티스트·디자이너·사진가·건축가 등 창작자)를 한국어로 간단히 소개해 주세요.`,
+    titles.length ? `참고: 사용자가 이 작가의 작품으로 저장한 것 — ${titles.join(', ')}` : '',
+    tags.length ? `참고 태그: ${tags.join(', ')}` : '',
+    '',
+    '형식:',
+    '- 첫 줄: 한 문장 요약 (어느 나라, 어떤 분야, 언제 활동)',
+    '- 그다음 3~5줄: 대표 작품, 스타일·특징, 왜 레퍼런스로 볼 만한지',
+    '- 마크다운 기호(#, *, **) 없이 평범한 문장으로, 한 줄에 한 문장.',
+    '',
+    '중요: 확실하지 않은 사실은 지어내지 마세요. 누구인지 확실히 모르거나 동명이인이 여럿이면',
+    '"정확한 정보를 찾지 못했습니다."라고 쓰고, 알 수 있는 범위만 짧게 적어 주세요. 소개 글만 답하세요.',
+  ].filter((l) => l !== null).join('\n');
+  try {
+    const { text } = await sample(prompt, { modelTier: 'default' });
+    return text.replace(/\*\*/g, '').trim().slice(0, LIMITS.description);
+  } catch (err) {
+    if (err?.code === 'not_granted') fail('AI 사용을 허락하지 않아서 만들지 못했어요.', 403);
+    if (err?.code === 'rate_limited') fail('AI를 너무 자주 불렀어요. 잠시 뒤 다시 해 주세요.', 429);
+    fail('AI 설명을 만들지 못했어요. 잠시 뒤 다시 해 주세요.', 502);
+  }
+}
+
+async function api(path, { method = 'GET', body, raw } = {}) {
+  const parts = path.replace(/^\/api\//, '').split('/').map(decodeURIComponent);
+  const [head, id, sub] = parts;
+  const m = method;
+
+  if (head === 'session') {
+    const w = await canWrite();
+    return { loggedIn: w, open: true };
+  }
+  if (head === 'login') {
+    if (await canWrite()) return { ok: true };
+    fail('보기 전용으로 열려 있어요. 고치려면 이 페이지의 편집 권한이 필요해요.', 403);
+  }
+  if (head === 'logout') return { ok: true };
+
+  const db = await need('db');
+
+  if (head === 'items') {
+    if (!id && m === 'GET') return { items: await allItems(db) };
+    if (!id && m === 'POST') {
+      const it = cleanItem(body || {});
+      if (!it.title && !it.images.length && !it.memo) fail('제목, 사진, 메모 중 하나는 있어야 합니다.');
+      const now = Date.now();
+      const ref = db.collection('items').doc();
+      await ref.set({ ...it, createdAt: now, updatedAt: now }).catch(dbError);
+      return { item: { id: ref.id, ...it, createdAt: now, updatedAt: now } };
+    }
+    const ref = db.collection('items').doc(id);
+    const old = await ref.get().catch(dbError);
+    if (!old.exists) fail('찾을 수 없습니다.', 404);
+    const prev = toItem(old);
+    if (m === 'PUT') {
+      const it = cleanItem(body || {});
+      if (!it.title && !it.images.length && !it.memo) fail('제목, 사진, 메모 중 하나는 있어야 합니다.');
+      const now = Date.now();
+      await ref.set({ ...it, createdAt: prev.createdAt, updatedAt: now }).catch(dbError);
+      const assets = (await CAPS).assets;
+      await Promise.all(prev.images.filter((k) => !it.images.includes(k)).map((k) => assets?.delete(k).catch(() => {})));
+      return { item: { id, ...it, createdAt: prev.createdAt, updatedAt: now } };
+    }
+    if (m === 'DELETE') {
+      await ref.delete().catch(dbError);
+      const assets = (await CAPS).assets;
+      await Promise.all(prev.images.map((k) => assets?.delete(k).catch(() => {})));
+      return { ok: true };
+    }
+  }
+
+  if (head === 'images') {
+    const assets = await need('assets');
+    if (!id && m === 'POST') {
+      try {
+        const r = await assets.upload(raw);
+        return { key: r.id };
+      } catch (err) {
+        if (err?.code === 'too_large') fail('사진이 너무 커요 (20MB까지).');
+        if (err?.code === 'unsupported_type') fail('jpg, png, webp, gif 사진만 올릴 수 있어요.');
+        if (err?.code === 'quota_or_state') fail('사진 저장 공간이 가득 찼어요.');
+        fail('사진을 올리지 못했어요. 잠시 뒤 다시 해 주세요.', 502);
+      }
+    }
+    if (id && m === 'DELETE') {
+      await assets.delete(id).catch(() => {});
+      return { ok: true };
+    }
+  }
+
+  if (head === 'artists') {
+    if (!id && m === 'GET') {
+      const items = await allItems(db);
+      const count = new Map();
+      for (const it of items) if (it.artist) count.set(it.artist, (count.get(it.artist) || 0) + 1);
+      const descs = await db.collection('artists').limit(1000).get().catch(dbError);
+      const byName = new Map(descs.docs.filter((d) => d.exists).map((d) => [d.data().name, d.data()]));
+      const artists = [...count.entries()]
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'ko'))
+        .map(([name, n]) => {
+          const a = byName.get(name) || {};
+          return { name, count: n, description: a.description || '', sources: [], byAi: !!a.byAi, updatedAt: a.updatedAt || null };
+        });
+      return { artists };
+    }
+    const name = str(id, LIMITS.artist);
+    if (!name) fail('작가 이름이 없습니다.');
+    const ref = db.collection('artists').doc(await artistKey(name));
+    if (!sub && m === 'PUT') {
+      const description = str(body?.description, LIMITS.description);
+      await ref.set({ name, description, byAi: false, updatedAt: Date.now() }).catch(dbError);
+      return { artist: { name, description, sources: [], byAi: false } };
+    }
+    if (sub === 'ai' && m === 'POST') {
+      const description = await describeWithAi(name, await allItems(db));
+      await ref.set({ name, description, byAi: true, updatedAt: Date.now() }).catch(dbError);
+      return { artist: { name, description, sources: [], byAi: true } };
+    }
+  }
+
+  if (head === 'boards') {
+    const col = db.collection('boards');
+    if (!id && m === 'GET') {
+      const snap = await col.orderBy('updatedAt', 'desc').limit(500).get().catch(dbError);
+      return {
+        boards: snap.docs.filter((d) => d.exists).map((d) => {
+          const x = d.data();
+          return { id: d.id, title: x.title, summary: x.summary || {}, createdAt: x.createdAt, updatedAt: x.updatedAt };
+        }),
+      };
+    }
+    if (!id && m === 'POST') {
+      const now = Date.now();
+      const title = str(body?.title, LIMITS.title) || '새 계획';
+      const ref = col.doc();
+      await ref.set({ title, data: {}, summary: boardSummary({}), createdAt: now, updatedAt: now }).catch(dbError);
+      return { board: { id: ref.id, title, data: {}, createdAt: now, updatedAt: now } };
+    }
+    const ref = col.doc(id);
+    const snap = await ref.get().catch(dbError);
+    if (!snap.exists) fail('찾을 수 없습니다.', 404);
+    const cur = snap.data();
+    if (m === 'GET') return { board: { id, title: cur.title, data: cur.data || {}, createdAt: cur.createdAt, updatedAt: cur.updatedAt } };
+    if (m === 'PUT') {
+      const data = body?.data && typeof body.data === 'object' ? body.data : {};
+      if (JSON.stringify(data).length > 240 * 1024) fail('그림이 너무 커요. 선을 조금 지우거나 새 계획으로 나눠 주세요.', 413);
+      const now = Date.now();
+      await ref.set({ title: str(body?.title, LIMITS.title) || '새 계획', data, summary: boardSummary(data), createdAt: cur.createdAt, updatedAt: now }).catch(dbError);
+      const oldBg = cur.data?.bg;
+      if (oldBg && oldBg !== data.bg) (await CAPS).assets?.delete(oldBg).catch(() => {});
+      return { ok: true, updatedAt: now };
+    }
+    if (m === 'DELETE') {
+      await ref.delete().catch(dbError);
+      if (cur.data?.bg) (await CAPS).assets?.delete(cur.data.bg).catch(() => {});
+      return { ok: true };
+    }
+  }
+
+  fail('허용되지 않는 요청입니다.', 405);
+}
+
+// ===== 공용 (common.js) =====
+// 레퍼런스 · 관리 화면이 같이 쓰는 도우미
+
+const $ = (sel, root = document) => root.querySelector(sel);
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+
+let toastTimer;
+function toast(msg) {
+  const el = $('#toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
+}
+
+function setBusy(btn, on) {
+  if (!btn) return;
+  btn.disabled = on;
+  btn.classList.toggle('loading', on);
+}
+
+// 한글 초성 뽑기: "고흐" → "ㄱㅎ"
+const CHO = 'ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ';
+function choseong(s) {
+  let out = '';
+  for (const ch of s) {
+    const c = ch.charCodeAt(0) - 0xac00;
+    out += c >= 0 && c < 11172 ? CHO[Math.floor(c / 588)] : ch;
+  }
+  return out;
+}
+
+function fmtDate(ms) {
+  const d = new Date(ms);
+  return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// 사진을 올리기 전에 긴 변 2000px 로 줄여 저장 공간과 시간을 아낍니다. (움직이는 GIF 는 그대로)
+async function resizeImage(file, max = 2000) {
+  if (file.type === 'image/gif') {
+    if (file.size > 8 * 1024 * 1024) throw new Error('GIF가 너무 커요 (8MB까지)');
+    return file;
+  }
+  let bmp;
+  try {
+    bmp = await createImageBitmap(file, { imageOrientation: 'from-image' });
+  } catch {
+    throw new Error('이 사진 형식은 열 수 없어요 (jpg, png로 바꿔서 넣어 주세요)');
+  }
+  const scale = Math.min(1, max / Math.max(bmp.width, bmp.height));
+  const w = Math.round(bmp.width * scale);
+  const h = Math.round(bmp.height * scale);
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff'; // 투명 PNG 를 JPG 로 바꿀 때 검게 나오지 않도록
+  ctx.fillRect(0, 0, w, h);
+  ctx.drawImage(bmp, 0, 0, w, h);
+  bmp.close?.();
+  return new Promise((resolve, reject) =>
+    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('사진을 바꾸지 못했어요'))), 'image/jpeg', 0.86)
+  );
+}
+
+/* ── 바텀시트 ── */
+let onCloseCb = null;
+let sheetOpen = false;
+
+const sheetBody = () => $('#sheetBody');
+
+function openSheet(html, { onClose } = {}) {
+  if (sheetOpen && onCloseCb) { const cb = onCloseCb; onCloseCb = null; cb(); }
+  onCloseCb = onClose || null;
+  $('#sheetBody').innerHTML = html;
+  $('#sheetBody').scrollTop = 0;
+  $('#sheet').hidden = false;
+  $('#backdrop').hidden = false;
+  document.body.style.overflow = 'hidden';
+  sheetOpen = true;
+}
+
+// 닫은 뒤 화면 이동을 해야 하면 await 해 주세요. (뒤로가기 기록이 정리된 다음에 이어집니다)
+let popWaiter = null;
+function closeSheet(fromPop = false) {
+  if (!sheetOpen) return Promise.resolve();
+  sheetOpen = false;
+  $('#sheet').hidden = true;
+  $('#backdrop').hidden = true;
+  document.body.style.overflow = '';
+  if (onCloseCb) { const cb = onCloseCb; onCloseCb = null; cb(); }
+  if (false) {
+    return new Promise((resolve) => {
+      popWaiter = resolve;
+      history.back();
+      setTimeout(() => { if (popWaiter === resolve) { popWaiter = null; resolve(); } }, 400);
+    });
+  }
+  return Promise.resolve();
+}
+
+// 휴대폰 "뒤로" 를 누르면 시트만 닫히도록
+window.addEventListener('popstate', () => {
+  if (popWaiter) { const r = popWaiter; popWaiter = null; r(); return; }
+  closeSheet(true);
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSheet(); });
+document.addEventListener('DOMContentLoaded', () => {
+  const bd = $('#backdrop');
+  if (bd) bd.onclick = () => closeSheet();
+});
+if (document.readyState !== 'loading') {
+  const bd = $('#backdrop');
+  if (bd) bd.onclick = () => closeSheet();
+}
+
+const ICON = {
+  x: '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>',
+  chevron: '<svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>',
+  camera: '<svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>',
+};
+
+// ===== 화면 전환 =====
+let onAdminShow = null;
+function showScreen(name) {
+  $('#mainScreen').hidden = name !== 'main';
+  $('#adminScreen').hidden = name !== 'admin';
+  document.body.classList.toggle('admin', name === 'admin');
+  window.scrollTo({ top: 0 });
+  if (name === 'admin' && onAdminShow) onAdminShow();
+  if (name === 'main') { document.body.classList.remove('editing'); refreshMain && refreshMain(); }
+}
+let refreshMain = null;
+// ===== 관리 화면 (admin.js) =====
+{
+// 관리 화면 — 작업 계획 보드
+// 도화지(1600×1000) 위에 펜으로 그리고, 조명을 놓아 위치·색온도(K)·밝기를 정하고, 할 일과 메모를 적습니다.
+// 바꿀 때마다 1초 뒤 자동 저장됩니다.
+
+
+const W = 1600;
+const H = 1000;
+const NS = 'http://www.w3.org/2000/svg';
+const COLORS = ['#191f28', '#3182f6', '#f04452', '#ff9f0f', '#03b26c', '#8b95a1'];
+const WIDTHS = [2, 4, 8]; // 화면에서 보이는 굵기(px)
+const KINDS = {
+  down: '다운라이트',
+  spot: '스포트',
+  pendant: '펜던트',
+  line: '라인 조명',
+  indirect: '간접 조명',
+};
+const KELVIN_PRESETS = [
+  [2200, '촛불'],
+  [2700, '전구색'],
+  [3000, '웜화이트'],
+  [4000, '주백색'],
+  [5000, '주광'],
+  [6500, '주광색'],
+];
+
+const ed = {
+  board: null, // { id, title, data }
+  tool: 'pen',
+  color: COLORS[0],
+  width: WIDTHS[1],
+  selected: null, // { type: 'light'|'text'|'stroke', id }
+  undo: [],
+  redo: [],
+  view: { x: 0, y: 0, w: W, h: H },
+  saveTimer: null,
+  saving: false,
+  dirty: false,
+  showGrid: true,
+};
+
+const svg = $('#board');
+const stage = $('#stage');
+
+/* ─────────────── 시작 · 로그인 ─────────────── */
+
+init();
+
+async function init() {
+  const s = await api('/api/session').catch(() => ({}));
+  if (s.loggedIn) { $('#loginBox').hidden = true; $('#boardsBox').hidden = false; }
+  else showLogin();
+  if (s.open) $('#logoutBtn').hidden = true; // 열린 모드에는 로그아웃이 필요 없음
+
+  $('#loginForm').onsubmit = async (e) => {
+    e.preventDefault();
+    setBusy($('#pwBtn'), true);
+    try {
+      await api('/api/login', { method: 'POST', body: { password: $('#pw').value } });
+      showBoards();
+    } catch (err) {
+      toast(err.message);
+    }
+    setBusy($('#pwBtn'), false);
+  };
+  $('#logoutBtn').onclick = async () => {
+    await api('/api/logout', { method: 'POST' }).catch(() => {});
+    showLogin();
+  };
+  $('#newBoard').onclick = newBoard;
+  bindEditor();
+  $('#adminBackBtn').onclick = async () => { await flushSave(); showScreen('main'); };
+  onAdminShow = () => route();
+}
+
+function showLogin() {
+  $('#loginBox').hidden = false;
+  $('#boardsBox').hidden = true;
+  $('#logoutBtn').hidden = true;
+  setTimeout(() => $('#pw').focus(), 50);
+}
+
+async function showBoards() {
+  $('#loginBox').hidden = true;
+  $('#boardsBox').hidden = false;
+  $('#logoutBtn').hidden = false;
+  route();
+}
+
+async function route() {
+  const id = adminBoardId;
+  if (id) return openBoard(id);
+  await flushSave();
+  $('#editorScreen').hidden = true;
+  $('#listScreen').hidden = false;
+  document.body.classList.remove('editing');
+  loadBoards();
+}
+
+let adminBoardId = '';
+function adminGo(id) { adminBoardId = id; route(); }
+
+/* ─────────────── 보드 목록 ─────────────── */
+
+async function loadBoards() {
+  let boards = [];
+  try {
+    ({ boards } = await api('/api/boards'));
+  } catch (err) {
+    if (err.status === 401) return showLogin();
+    toast(err.message);
+  }
+  $('#boardList').innerHTML = boards.length
+    ? boards.map((b) => {
+      const s = b.summary || {};
+      return `<li><a class="board-item" href="#${b.id}">
+        <div class="board-thumb">${s.bg ? `<img src="/_blob/${s.bg}" alt="" loading="lazy" />` : '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="m3 15 5-5 4 4 3-3 6 6"/></svg>'}</div>
+        <div class="board-main">
+          <strong>${esc(b.title)}</strong>
+          <span class="board-meta">조명 ${s.lights || 0}개 · 할 일 ${s.done || 0}/${s.todos || 0} · ${fmtDate(b.updatedAt)}</span>
+          ${(s.kelvins || []).length ? `<span class="k-chips">${s.kelvins.map((k) => `<span class="k-chip"><i style="background:${kelvinColor(k)}"></i>${k}K</span>`).join('')}</span>` : ''}
+        </div>
+      </a></li>`;
+    }).join('')
+    : '<li class="panel-empty" style="padding:24px 4px">아직 계획이 없어요. 위의 "새 계획 만들기"를 눌러 시작하세요.</li>';
+}
+
+async function newBoard() {
+  try {
+    const { board } = await api('/api/boards', { method: 'POST', body: { title: `계획 ${fmtDate(Date.now())}` } });
+    adminGo(board.id);
+  } catch (err) {
+    toast(err.message);
+  }
+}
+
+/* ─────────────── 보드 열기 ─────────────── */
+
+async function openBoard(id) {
+  if (ed.board?.id === id && !$('#editorScreen').hidden) return;
+  let board;
+  try {
+    ({ board } = await api(`/api/boards/${encodeURIComponent(id)}`));
+  } catch (err) {
+    toast(err.status === 401 ? '로그인이 필요해요' : err.message);
+    adminGo('');
+    return;
+  }
+  const d = board.data || {};
+  board.data = {
+    v: 1,
+    bg: d.bg || null,
+    bgOpacity: d.bgOpacity ?? 1,
+    grid: d.grid ?? true,
+    strokes: d.strokes || [],
+    lights: d.lights || [],
+    texts: d.texts || [],
+    todos: d.todos || [],
+    note: d.note || '',
+  };
+  ed.board = board;
+  ed.selected = null;
+  ed.undo = [];
+  ed.redo = [];
+  $('#listScreen').hidden = true;
+  $('#editorScreen').hidden = false;
+  document.body.classList.add('editing');
+  $('#edTitle').value = board.title;
+  $('#planNote').value = board.data.note;
+  setSaveState('저장됨');
+  renderAll();
+  fitView();
+  setTool(ed.tool);
+}
+
+/* ─────────────── 저장 ─────────────── */
+
+function setSaveState(t) { $('#saveState').textContent = t; }
+
+function scheduleSave() {
+  ed.dirty = true;
+  setSaveState('저장 중…');
+  clearTimeout(ed.saveTimer);
+  ed.saveTimer = setTimeout(save, 1000);
+}
+
+async function save() {
+  clearTimeout(ed.saveTimer);
+  if (!ed.board || !ed.dirty) return;
+  if (ed.saving) { ed.saveTimer = setTimeout(save, 500); return; }
+  ed.saving = true;
+  ed.dirty = false;
+  try {
+    await api(`/api/boards/${ed.board.id}`, { method: 'PUT', body: { title: $('#edTitle').value, data: ed.board.data } });
+    setSaveState(ed.dirty ? '저장 중…' : '저장됨');
+  } catch (err) {
+    ed.dirty = true;
+    setSaveState('저장 안 됨');
+    toast(err.status === 401 ? '로그인이 풀렸어요. 새로고침 후 다시 로그인해 주세요' : err.message);
+  }
+  ed.saving = false;
+}
+
+async function flushSave() {
+  if (ed.dirty) await save();
+}
+
+window.addEventListener('pagehide', () => { if (ed.dirty) save(); });
+
+/* ─────────────── 되돌리기 ─────────────── */
+
+function snapshot() {
+  const { strokes, lights, texts } = ed.board.data;
+  return JSON.stringify({ strokes, lights, texts });
+}
+
+// 바꾸기 "전"에 부릅니다.
+function remember() {
+  ed.undo.push(snapshot());
+  if (ed.undo.length > 80) ed.undo.shift();
+  ed.redo = [];
+  updateUndoButtons();
+}
+
+function restore(snap) {
+  Object.assign(ed.board.data, JSON.parse(snap));
+  if (ed.selected && !findSelected()) ed.selected = null;
+  renderAll();
+  scheduleSave();
+}
+
+function doUndo() {
+  if (!ed.undo.length) return;
+  ed.redo.push(snapshot());
+  restore(ed.undo.pop());
+  updateUndoButtons();
+}
+
+function doRedo() {
+  if (!ed.redo.length) return;
+  ed.undo.push(snapshot());
+  restore(ed.redo.pop());
+  updateUndoButtons();
+}
+
+function updateUndoButtons() {
+  $('#undoBtn').disabled = !ed.undo.length;
+  $('#redoBtn').disabled = !ed.redo.length;
+}
+
+/* ─────────────── 색온도 → 색 ─────────────── */
+
+// 색온도(K)를 화면에 보이는 대략의 색으로 바꿉니다 (Tanner Helland 근사식).
+function kelvinColor(k) {
+  const t = Math.min(40000, Math.max(1000, k)) / 100;
+  let r; let g; let b;
+  if (t <= 66) {
+    r = 255;
+    g = 99.4708025861 * Math.log(t) - 161.1195681661;
+    b = t <= 19 ? 0 : 138.5177312231 * Math.log(t - 10) - 305.0447927307;
+  } else {
+    r = 329.698727446 * Math.pow(t - 60, -0.1332047592);
+    g = 288.1221695283 * Math.pow(t - 60, -0.0755148492);
+    b = 255;
+  }
+  const c = (v) => Math.round(Math.min(255, Math.max(0, v))).toString(16).padStart(2, '0');
+  return `#${c(r)}${c(g)}${c(b)}`;
+}
+
+function kelvinName(k) {
+  if (k < 2500) return '촛불·호박색';
+  if (k < 2900) return '전구색 (아늑함)';
+  if (k < 3500) return '웜화이트 (따뜻함)';
+  if (k < 4500) return '주백색 (자연스러움)';
+  if (k < 5800) return '주광 (밝고 또렷함)';
+  return '주광색 (차갑고 선명함)';
+}
+
+/* ─────────────── 그리기 (화면 갱신) ─────────────── */
+
+function el(tag, attrs = {}, parent) {
+  const n = document.createElementNS(NS, tag);
+  for (const [k, v] of Object.entries(attrs)) if (v !== undefined && v !== null) n.setAttribute(k, v);
+  if (parent) parent.appendChild(n);
+  return n;
+}
+
+function pathD(pts) {
+  if (pts.length < 4) return '';
+  if (pts.length === 4 && pts[0] === pts[2] && pts[1] === pts[3]) return `M${pts[0]} ${pts[1]}l0.1 0`;
+  // 점 사이를 부드러운 곡선으로 잇습니다.
+  let d = `M${pts[0]} ${pts[1]}`;
+  for (let i = 2; i < pts.length - 2; i += 2) {
+    const mx = (pts[i] + pts[i + 2]) / 2;
+    const my = (pts[i + 1] + pts[i + 3]) / 2;
+    d += `Q${pts[i]} ${pts[i + 1]} ${mx.toFixed(1)} ${my.toFixed(1)}`;
+  }
+  d += `L${pts[pts.length - 2]} ${pts[pts.length - 1]}`;
+  return d;
+}
+
+function renderAll() {
+  renderBackground();
+  renderStrokes();
+  renderLights();
+  renderTexts();
+  renderSelection();
+  renderPanel();
+  updateUndoButtons();
+}
+
+function renderBackground() {
+  const d = ed.board.data;
+  const img = $('#bgImage');
+  if (d.bg) {
+    img.setAttribute('href', `/_blob/${d.bg}`);
+    img.setAttribute('visibility', 'visible');
+    img.setAttribute('opacity', d.bgOpacity);
+  } else {
+    img.removeAttribute('href');
+    img.setAttribute('visibility', 'hidden');
+  }
+  $('#gridRect').setAttribute('visibility', d.grid ? 'visible' : 'hidden');
+}
+
+function renderStrokes() {
+  const g = $('#layerStrokes');
+  g.innerHTML = '';
+  for (const s of ed.board.data.strokes) {
+    el('path', {
+      d: pathD(s.pts), fill: 'none', stroke: s.color, 'stroke-width': s.w,
+      'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'data-type': 'stroke', 'data-id': s.id,
+    }, g);
+  }
+}
+
+function lightSize(l) { return l.size ?? 160; }
+
+function renderLights(kOverride) {
+  const k = kOverride ?? upp();
+  const glow = $('#layerGlow');
+  const g = $('#layerLights');
+  glow.innerHTML = '';
+  g.innerHTML = '';
+  const defs = el('defs', {}, glow);
+
+  for (const l of ed.board.data.lights) {
+    const col = kelvinColor(l.k);
+    const power = (l.power ?? 80) / 100;
+    const r = lightSize(l);
+    const ang = l.angle || 0;
+
+    // 빛 퍼짐
+    const gid = `glow-${l.id}`;
+    const grad = el('radialGradient', { id: gid }, defs);
+    el('stop', { offset: '0%', 'stop-color': col, 'stop-opacity': (0.75 * power).toFixed(2) }, grad);
+    el('stop', { offset: '55%', 'stop-color': col, 'stop-opacity': (0.3 * power).toFixed(2) }, grad);
+    el('stop', { offset: '100%', 'stop-color': col, 'stop-opacity': 0 }, grad);
+    if (l.kind === 'spot') {
+      // 한쪽으로 비추는 원뿔 모양
+      const spread = 30 * Math.PI / 180;
+      const a = (ang - 90) * Math.PI / 180;
+      const p1 = [l.x + Math.cos(a - spread) * r * 1.4, l.y + Math.sin(a - spread) * r * 1.4];
+      const p2 = [l.x + Math.cos(a + spread) * r * 1.4, l.y + Math.sin(a + spread) * r * 1.4];
+      el('path', { d: `M${l.x} ${l.y}L${p1[0]} ${p1[1]}A${r * 1.4} ${r * 1.4} 0 0 1 ${p2[0]} ${p2[1]}Z`, fill: `url(#${gid})` }, glow);
+    } else if (l.kind === 'line' || l.kind === 'indirect') {
+      const len = l.len ?? 300;
+      el('rect', {
+        x: l.x - len / 2 - r * 0.5, y: l.y - r * 0.5, width: len + r, height: r,
+        rx: r * 0.5, fill: col, opacity: (0.35 * power).toFixed(2), filter: 'url(#soft)',
+        transform: `rotate(${ang} ${l.x} ${l.y})`,
+      }, glow);
+    } else {
+      el('circle', { cx: l.x, cy: l.y, r, fill: `url(#${gid})` }, glow);
+    }
+
+    // 조명 기구 모양
+    const grp = el('g', { 'data-type': 'light', 'data-id': l.id, class: 'light', transform: `translate(${l.x} ${l.y})` }, g);
+    const glyph = el('g', { transform: `scale(${k})` }, grp);
+    const stroke = '#191f28';
+    if (l.kind === 'line' || l.kind === 'indirect') {
+      // 길이는 실제 도화지 길이, 두께만 화면 기준
+      const len = (l.len ?? 300) / k;
+      el('rect', {
+        x: -len / 2, y: -7, width: len, height: 14, rx: 7, fill: col, stroke, 'stroke-width': 2.5,
+        'stroke-dasharray': l.kind === 'indirect' ? '10 6' : null, transform: `rotate(${ang})`,
+      }, glyph);
+    } else if (l.kind === 'pendant') {
+      el('rect', { x: -13, y: -13, width: 26, height: 26, rx: 4, fill: col, stroke, 'stroke-width': 2.5, transform: 'rotate(45)' }, glyph);
+    } else {
+      el('circle', { r: 15, fill: col, stroke, 'stroke-width': 2.5 }, glyph);
+      el('circle', { r: 5, fill: stroke }, glyph);
+      if (l.kind === 'spot') el('path', { d: 'M0 -15L0 -30', stroke, 'stroke-width': 3, 'stroke-linecap': 'round', transform: `rotate(${ang})` }, glyph);
+    }
+    // 넉넉한 터치 영역
+    el('circle', { r: 26, fill: 'transparent' }, glyph);
+
+    // 이름표
+    const label = `${l.name ? `${l.name} · ` : ''}${l.k}K · ${l.power ?? 80}%`;
+    const ly = (l.kind === 'line' || l.kind === 'indirect') ? 30 : 42;
+    const tw = label.length * 12 + 20;
+    el('rect', { x: -tw / 2, y: ly - 18, width: tw, height: 28, rx: 14, fill: '#191f28', opacity: 0.86 }, glyph);
+    const t = el('text', { x: 0, y: ly + 1, 'text-anchor': 'middle', 'font-size': 15, 'font-weight': 700, fill: '#fff', 'font-family': 'Pretendard Variable, Pretendard, sans-serif' }, glyph);
+    t.textContent = label;
+  }
+}
+
+function renderTexts() {
+  const g = $('#layerTexts');
+  g.innerHTML = '';
+  for (const t of ed.board.data.texts) {
+    const n = el('text', {
+      x: t.x, y: t.y, fill: t.color, 'font-size': t.size, 'font-weight': 700,
+      'font-family': 'Pretendard Variable, Pretendard, sans-serif', 'data-type': 'text', 'data-id': t.id,
+      'dominant-baseline': 'hanging',
+    }, g);
+    String(t.text || '글자').split('\n').forEach((line, i) => {
+      const s = el('tspan', { x: t.x, dy: i ? t.size * 1.3 : 0 }, n);
+      s.textContent = line || ' ';
+    });
+  }
+}
+
+function findSelected() {
+  const s = ed.selected;
+  if (!s) return null;
+  const list = { light: ed.board.data.lights, text: ed.board.data.texts, stroke: ed.board.data.strokes }[s.type];
+  return list.find((x) => x.id === s.id) || null;
+}
+
+function renderSelection() {
+  const g = $('#layerSelect');
+  g.innerHTML = '';
+  const s = ed.selected;
+  if (!s) return;
+  const node = svg.querySelector(`[data-type="${s.type}"][data-id="${s.id}"]`);
+  if (!node) return;
+  const b = node.getBBox();
+  let x = b.x; let y = b.y;
+  if (s.type === 'light') { const l = findSelected(); x += l.x; y += l.y; }
+  const pad = 8 * upp();
+  el('rect', {
+    x: x - pad, y: y - pad, width: b.width + pad * 2, height: b.height + pad * 2, rx: 10,
+    fill: 'none', stroke: '#3182f6', 'stroke-width': 2.5 * upp(), 'stroke-dasharray': '8 6', 'pointer-events': 'none',
+  }, g);
+}
+
+/* ─────────────── 오른쪽 패널 ─────────────── */
+
+function renderPanel() {
+  renderProps();
+  renderLightList();
+  renderTodos();
+}
+
+function renderLightList() {
+  const lights = ed.board.data.lights;
+  $('#lightCount').textContent = lights.length ? `${lights.length}` : '';
+  $('#lightEmpty').hidden = lights.length > 0;
+  $('#lightList').innerHTML = lights.map((l, i) => `
+    <li><button data-id="${l.id}" class="${ed.selected?.id === l.id ? 'on' : ''}">
+      <i class="k-dot" style="background:${kelvinColor(l.k)}"></i>
+      <span class="ll-name">${esc(l.name || `조명 ${i + 1}`)}<small>${KINDS[l.kind] || KINDS.down}</small></span>
+      <span class="ll-k">${l.k}K</span>
+      <span class="ll-p">${l.power ?? 80}%</span>
+    </button></li>`).join('');
+  $('#lightList').querySelectorAll('button').forEach((b) => (b.onclick = () => select({ type: 'light', id: b.dataset.id })));
+}
+
+function renderTodos() {
+  const todos = ed.board.data.todos;
+  const done = todos.filter((t) => t.done).length;
+  $('#todoCount').textContent = todos.length ? `${done}/${todos.length}` : '';
+  const sorted = [...todos].sort((a, b) => (a.done - b.done) || ((a.date || '9999') < (b.date || '9999') ? -1 : (a.date || '9999') > (b.date || '9999') ? 1 : 0));
+  $('#todoList').innerHTML = sorted.map((t) => `
+    <li class="${t.done ? 'done' : ''}">
+      <label><input type="checkbox" data-id="${t.id}" ${t.done ? 'checked' : ''} /><span class="check"></span></label>
+      <div class="todo-main">
+        <span class="todo-text" contenteditable="plaintext-only" data-id="${t.id}">${esc(t.text)}</span>
+        ${t.date ? `<span class="todo-date ${!t.done && t.date < today() ? 'late' : ''}">${t.date.replace(/-/g, '.')}</span>` : ''}
+      </div>
+      <button class="todo-del" data-id="${t.id}" aria-label="지우기"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    </li>`).join('');
+  const list = $('#todoList');
+  list.querySelectorAll('input[type=checkbox]').forEach((c) => (c.onchange = () => {
+    const t = todos.find((x) => x.id === c.dataset.id);
+    t.done = c.checked;
+    renderTodos();
+    scheduleSave();
+  }));
+  list.querySelectorAll('.todo-text').forEach((s) => (s.onblur = () => {
+    const t = todos.find((x) => x.id === s.dataset.id);
+    const v = s.textContent.trim().slice(0, 300);
+    if (v && v !== t.text) { t.text = v; scheduleSave(); }
+    else s.textContent = t.text;
+  }));
+  list.querySelectorAll('.todo-del').forEach((b) => (b.onclick = () => {
+    ed.board.data.todos = todos.filter((x) => x.id !== b.dataset.id);
+    renderTodos();
+    scheduleSave();
+  }));
+}
+
+function today() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function renderProps() {
+  const box = $('#propBox');
+  const item = findSelected();
+  if (!item) { box.hidden = true; box.innerHTML = ''; return; }
+  box.hidden = false;
+  const type = ed.selected.type;
+
+  if (type === 'light') {
+    const l = item;
+    const showAngle = l.kind === 'spot' || l.kind === 'line' || l.kind === 'indirect';
+    const showLen = l.kind === 'line' || l.kind === 'indirect';
+    box.innerHTML = `
+      <div class="prop-head"><h3 class="panel-h">선택한 조명</h3><button class="text-btn small" data-act="close">닫기</button></div>
+      <div class="k-preview" style="--k:${kelvinColor(l.k)}"><strong>${l.k}K</strong><span>${kelvinName(l.k)}</span></div>
+      <label class="prop"><span>이름</span><input class="field sm" data-f="name" maxlength="40" placeholder="예) 거실 메인" value="${esc(l.name || '')}" /></label>
+      <div class="prop"><span>종류</span><div class="seg">${Object.entries(KINDS).map(([k, v]) => `<button data-kind="${k}" class="${(l.kind || 'down') === k ? 'on' : ''}">${v}</button>`).join('')}</div></div>
+      <label class="prop"><span>색온도 <b data-out="k">${l.k}K</b></span>
+        <input type="range" class="kelvin-range" data-f="k" min="1800" max="10000" step="50" value="${l.k}" /></label>
+      <div class="k-presets">${KELVIN_PRESETS.map(([k, n]) => `<button data-k="${k}" class="${l.k === k ? 'on' : ''}"><i style="background:${kelvinColor(k)}"></i>${k}K<small>${n}</small></button>`).join('')}</div>
+      <label class="prop"><span>밝기 <b data-out="power">${l.power ?? 80}%</b></span><input type="range" data-f="power" min="0" max="100" step="5" value="${l.power ?? 80}" /></label>
+      <label class="prop"><span>빛 퍼짐 <b data-out="size">${lightSize(l)}</b></span><input type="range" data-f="size" min="30" max="600" step="10" value="${lightSize(l)}" /></label>
+      ${showAngle ? `<label class="prop"><span>방향 <b data-out="angle">${l.angle || 0}°</b></span><input type="range" data-f="angle" min="0" max="355" step="5" value="${l.angle || 0}" /></label>` : ''}
+      ${showLen ? `<label class="prop"><span>길이 <b data-out="len">${l.len ?? 300}</b></span><input type="range" data-f="len" min="40" max="1400" step="10" value="${l.len ?? 300}" /></label>` : ''}
+      <label class="prop"><span>메모</span><textarea class="field sm" data-f="memo" rows="3" maxlength="1000" placeholder="제품명, 높이, 설치 방법, 가격 등">${esc(l.memo || '')}</textarea></label>
+      <div class="btn-row"><button class="btn ghost small" data-act="dup">복제</button><button class="btn danger small" data-act="del">삭제</button></div>`;
+  } else if (type === 'text') {
+    const t = item;
+    box.innerHTML = `
+      <div class="prop-head"><h3 class="panel-h">선택한 글자</h3><button class="text-btn small" data-act="close">닫기</button></div>
+      <label class="prop"><span>내용</span><textarea class="field sm" data-f="text" rows="3" maxlength="500">${esc(t.text)}</textarea></label>
+      <label class="prop"><span>크기 <b data-out="size">${t.size}</b></span><input type="range" data-f="size" min="8" max="400" step="2" value="${t.size}" /></label>
+      <div class="prop"><span>색</span><div class="swatches inline">${COLORS.map((c) => `<button data-color="${c}" class="${t.color === c ? 'on' : ''}" style="--c:${c}"></button>`).join('')}</div></div>
+      <div class="btn-row"><button class="btn ghost small" data-act="dup">복제</button><button class="btn danger small" data-act="del">삭제</button></div>`;
+  } else {
+    box.innerHTML = `
+      <div class="prop-head"><h3 class="panel-h">선택한 선</h3><button class="text-btn small" data-act="close">닫기</button></div>
+      <div class="prop"><span>색</span><div class="swatches inline">${COLORS.map((c) => `<button data-color="${c}" class="${item.color === c ? 'on' : ''}" style="--c:${c}"></button>`).join('')}</div></div>
+      <div class="btn-row"><button class="btn danger small" data-act="del">삭제</button></div>`;
+  }
+
+  // 입력값 바꾸기: 움직이는 동안은 화면만 바꾸고, 손을 뗄 때 되돌리기 기록을 남깁니다.
+  let remembered = false;
+  const startChange = () => { if (!remembered) { remember(); remembered = true; } };
+  const endChange = () => { remembered = false; scheduleSave(); };
+
+  box.querySelectorAll('[data-f]').forEach((inp) => {
+    const f = inp.dataset.f;
+    inp.addEventListener('input', () => {
+      startChange();
+      const v = inp.type === 'range' ? Number(inp.value) : inp.value;
+      item[f] = v;
+      const out = box.querySelector(`[data-out="${f}"]`);
+      if (out) out.textContent = f === 'k' ? `${v}K` : f === 'power' ? `${v}%` : f === 'angle' ? `${v}°` : v;
+      if (f === 'k') {
+        const p = box.querySelector('.k-preview');
+        p.style.setProperty('--k', kelvinColor(v));
+        p.querySelector('strong').textContent = `${v}K`;
+        p.querySelector('span').textContent = kelvinName(v);
+        box.querySelectorAll('[data-k]').forEach((b) => b.classList.toggle('on', Number(b.dataset.k) === v));
+      }
+      redrawItem(type);
+    });
+    inp.addEventListener('change', endChange);
+  });
+  box.querySelectorAll('[data-k]').forEach((b) => (b.onclick = () => { remember(); item.k = Number(b.dataset.k); afterPropChange(type); }));
+  box.querySelectorAll('[data-kind]').forEach((b) => (b.onclick = () => { remember(); item.kind = b.dataset.kind; afterPropChange(type); }));
+  box.querySelectorAll('[data-color]').forEach((b) => (b.onclick = () => { remember(); item.color = b.dataset.color; afterPropChange(type); }));
+  box.querySelector('[data-act="close"]').onclick = () => select(null);
+  box.querySelector('[data-act="del"]').onclick = () => deleteSelected();
+  const dup = box.querySelector('[data-act="dup"]');
+  if (dup) dup.onclick = () => {
+    remember();
+    const copy = { ...item, id: uid(), x: item.x + 40, y: item.y + 40 };
+    ed.board.data[type === 'light' ? 'lights' : 'texts'].push(copy);
+    select({ type, id: copy.id });
+    scheduleSave();
+  };
+}
+
+function afterPropChange(type) {
+  redrawItem(type);
+  renderProps();
+  scheduleSave();
+}
+
+function redrawItem(type) {
+  if (type === 'light') { renderLights(); renderLightList(); } else if (type === 'text') renderTexts(); else renderStrokes();
+  renderSelection();
+}
+
+function select(sel) {
+  ed.selected = sel;
+  renderSelection();
+  renderProps();
+  renderLightList();
+  if (sel) openPanel(true);
+}
+
+function deleteSelected() {
+  const s = ed.selected;
+  if (!s) return;
+  remember();
+  const key = { light: 'lights', text: 'texts', stroke: 'strokes' }[s.type];
+  ed.board.data[key] = ed.board.data[key].filter((x) => x.id !== s.id);
+  ed.selected = null;
+  renderAll();
+  scheduleSave();
+}
+
+/* ─────────────── 확대 · 이동 ─────────────── */
+
+// 화면 1px 이 도화지에서 몇 칸인지. 조명 아이콘·이름표·펜 굵기는 확대해도 화면에서 같은 크기로 보이게 이걸 곱합니다.
+function upp() {
+  const r = svg.getBoundingClientRect();
+  if (!r.width || !r.height) return 1;
+  return Math.max(ed.view.w / r.width, ed.view.h / r.height);
+}
+
+function applyView() {
+  const v = ed.view;
+  svg.setAttribute('viewBox', `${v.x} ${v.y} ${v.w} ${v.h}`);
+  $('#zoomFit').textContent = `${Math.round((W / v.w) * 100)}%`;
+  if (ed.board) renderLights();
+  renderSelection();
+}
+
+function contentBox() {
+  const d = ed.board.data;
+  let x1 = Infinity; let y1 = Infinity; let x2 = -Infinity; let y2 = -Infinity;
+  const add = (ax, ay, bx, by) => { x1 = Math.min(x1, ax); y1 = Math.min(y1, ay); x2 = Math.max(x2, bx); y2 = Math.max(y2, by); };
+  if (d.bg) add(0, 0, W, H);
+  d.strokes.forEach((st) => { for (let i = 0; i < st.pts.length; i += 2) add(st.pts[i] - st.w, st.pts[i + 1] - st.w, st.pts[i] + st.w, st.pts[i + 1] + st.w); });
+  d.lights.forEach((l) => { const r = Math.max(lightSize(l), (l.len ?? 0) / 2 + 40); add(l.x - r, l.y - r, l.x + r, l.y + r); });
+  const tl = $('#layerTexts');
+  if (d.texts.length && tl.getBBox) { const b = tl.getBBox(); add(b.x, b.y, b.x + b.width, b.y + b.height); }
+  if (x1 === Infinity) return null;
+  return { x: x1, y: y1, w: Math.max(x2 - x1, 200), h: Math.max(y2 - y1, 120) };
+}
+
+function fitView() {
+  const b = ed.board && contentBox();
+  if (!b) ed.view = { x: 0, y: 0, w: W, h: H };
+  else {
+    const pad = Math.max(b.w, b.h) * 0.08;
+    ed.view = { x: b.x - pad, y: b.y - pad, w: b.w + pad * 2, h: b.h + pad * 2 };
+  }
+  applyView();
+}
+
+function zoomAt(factor, cx, cy) {
+  const v = ed.view;
+  const nw = Math.min(W * 20, Math.max(W / 20, v.w / factor));
+  const k = nw / v.w;
+  ed.view = { x: cx - (cx - v.x) * k, y: cy - (cy - v.y) * k, w: nw, h: v.h * k };
+  applyView();
+}
+
+function toBoard(evt) {
+  const pt = svg.createSVGPoint();
+  pt.x = evt.clientX;
+  pt.y = evt.clientY;
+  const p = pt.matrixTransform(svg.getScreenCTM().inverse());
+  return { x: Math.round(p.x * 10) / 10, y: Math.round(p.y * 10) / 10 };
+}
+
+/* ─────────────── 손가락 · 마우스 ─────────────── */
+
+const pointers = new Map();
+let gesture = null; // { kind: 'draw'|'move'|'pan'|'pinch'|'erase', ... }
+
+function hitItem(evt) {
+  const n = document.elementFromPoint(evt.clientX, evt.clientY)?.closest('[data-type]');
+  if (!n || !svg.contains(n)) return null;
+  return { type: n.dataset.type, id: n.dataset.id };
+}
+
+function distToSeg(px, py, ax, ay, bx, by) {
+  const dx = bx - ax; const dy = by - ay;
+  const len = dx * dx + dy * dy;
+  let t = len ? ((px - ax) * dx + (py - ay) * dy) / len : 0;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+}
+
+function eraseAt(p) {
+  const d = ed.board.data;
+  const tol = 14 * upp();
+  const hitStroke = d.strokes.find((s) => {
+    for (let i = 0; i < s.pts.length - 2; i += 2) {
+      if (distToSeg(p.x, p.y, s.pts[i], s.pts[i + 1], s.pts[i + 2], s.pts[i + 3]) < tol + s.w / 2) return true;
+    }
+    return s.pts.length === 2 && Math.hypot(p.x - s.pts[0], p.y - s.pts[1]) < tol + s.w / 2;
+  });
+  if (hitStroke) {
+    if (!gesture.erased) { remember(); gesture.erased = true; }
+    d.strokes = d.strokes.filter((s) => s !== hitStroke);
+    renderStrokes();
+    return true;
+  }
+  return false;
+}
+
+stage.addEventListener('pointerdown', (e) => {
+  if (!ed.board) return;
+  stage.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+  if (pointers.size === 2) {
+    // 두 손가락: 확대·이동. 그리던 선은 취소합니다.
+    if (gesture?.kind === 'draw') { gesture.path.remove(); }
+    const [a, b] = [...pointers.values()];
+    gesture = { kind: 'pinch', dist: Math.hypot(a.x - b.x, a.y - b.y), mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 } };
+    return;
+  }
+  if (pointers.size > 2) return;
+
+  const p = toBoard(e);
+  const hit = hitItem(e);
+  const tool = e.button === 1 ? 'pan' : ed.tool;
+
+  if (tool === 'pan') {
+    gesture = { kind: 'pan', last: { x: e.clientX, y: e.clientY } };
+  } else if (tool === 'pen') {
+    const u = upp();
+    const w = Math.round(ed.width * u * 10) / 10;
+    const path = el('path', { fill: 'none', stroke: ed.color, 'stroke-width': w, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, $('#layerStrokes'));
+    gesture = { kind: 'draw', pts: [p.x, p.y], path, w, u };
+    path.setAttribute('d', pathD([p.x, p.y, p.x, p.y]));
+  } else if (tool === 'eraser') {
+    gesture = { kind: 'erase', erased: false };
+    if (!eraseAt(p) && hit && hit.type !== 'stroke') {
+      // 조명·글자는 지우개로 누르면 바로 지워집니다.
+      select(hit);
+      deleteSelected();
+    }
+  } else if (tool === 'light') {
+    if (hit?.type === 'light') {
+      select(hit);
+      gesture = startMove(hit, p);
+    } else {
+      remember();
+      const l = { id: uid(), x: p.x, y: p.y, k: ed.lastKelvin || 3000, power: 80, size: 160, kind: ed.lastKind || 'down', name: '', memo: '' };
+      ed.board.data.lights.push(l);
+      renderLights();
+      select({ type: 'light', id: l.id });
+      scheduleSave();
+      gesture = startMove({ type: 'light', id: l.id }, p, true);
+    }
+  } else if (tool === 'text') {
+    if (hit?.type === 'text') {
+      select(hit);
+      gesture = startMove(hit, p);
+    } else {
+      remember();
+      const t = { id: uid(), x: p.x, y: p.y, text: '글자', size: Math.round(22 * upp()), color: ed.color };
+      ed.board.data.texts.push(t);
+      renderTexts();
+      select({ type: 'text', id: t.id });
+      scheduleSave();
+      setTimeout(() => { const ta = $('#propBox [data-f="text"]'); ta?.focus(); ta?.select(); }, 60);
+      gesture = null;
+    }
+  } else if (tool === 'select') {
+    if (hit) {
+      select(hit);
+      gesture = hit.type === 'stroke' ? startMoveStroke(hit, p) : startMove(hit, p);
+    } else {
+      select(null);
+      gesture = { kind: 'pan', last: { x: e.clientX, y: e.clientY } };
+    }
+  }
+});
+
+function startMove(hit, p, alreadyRemembered = false) {
+  const list = hit.type === 'light' ? ed.board.data.lights : ed.board.data.texts;
+  const item = list.find((x) => x.id === hit.id);
+  return { kind: 'move', item, type: hit.type, off: { x: p.x - item.x, y: p.y - item.y }, moved: false, remembered: alreadyRemembered };
+}
+
+function startMoveStroke(hit, p) {
+  const item = ed.board.data.strokes.find((x) => x.id === hit.id);
+  return { kind: 'moveStroke', item, start: p, orig: [...item.pts], moved: false };
+}
+
+stage.addEventListener('pointermove', (e) => {
+  if (!pointers.has(e.pointerId) || !gesture) return;
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+  if (gesture.kind === 'pinch' && pointers.size >= 2) {
+    const [a, b] = [...pointers.values()];
+    const dist = Math.hypot(a.x - b.x, a.y - b.y);
+    const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    const rect = svg.getBoundingClientRect();
+    const scale = ed.view.w / rect.width; // 화면 1px = 도화지 몇 칸 (대략)
+    ed.view.x -= (mid.x - gesture.mid.x) * scale;
+    ed.view.y -= (mid.y - gesture.mid.y) * scale;
+    const c = toBoard({ clientX: mid.x, clientY: mid.y });
+    zoomAt(dist / gesture.dist, c.x, c.y);
+    gesture.dist = dist;
+    gesture.mid = mid;
+    return;
+  }
+
+  if (gesture.kind === 'pan') {
+    const rect = svg.getBoundingClientRect();
+    const scale = Math.max(ed.view.w / rect.width, ed.view.h / rect.height);
+    ed.view.x -= (e.clientX - gesture.last.x) * scale;
+    ed.view.y -= (e.clientY - gesture.last.y) * scale;
+    gesture.last = { x: e.clientX, y: e.clientY };
+    applyView();
+    return;
+  }
+
+  const p = toBoard(e);
+  if (gesture.kind === 'draw') {
+    const pts = gesture.pts;
+    const lx = pts[pts.length - 2]; const ly = pts[pts.length - 1];
+    if (Math.hypot(p.x - lx, p.y - ly) < 2 * gesture.u) return;
+    pts.push(p.x, p.y);
+    gesture.path.setAttribute('d', pathD(pts));
+  } else if (gesture.kind === 'erase') {
+    eraseAt(p);
+  } else if (gesture.kind === 'move') {
+    if (!gesture.moved && Math.hypot(p.x - (gesture.item.x + gesture.off.x), p.y - (gesture.item.y + gesture.off.y)) < 3) return;
+    if (!gesture.remembered) { remember(); gesture.remembered = true; }
+    gesture.moved = true;
+    gesture.item.x = Math.round(p.x - gesture.off.x);
+    gesture.item.y = Math.round(p.y - gesture.off.y);
+    redrawItem(gesture.type);
+  } else if (gesture.kind === 'moveStroke') {
+    const dx = p.x - gesture.start.x; const dy = p.y - gesture.start.y;
+    if (!gesture.moved && Math.hypot(dx, dy) < 3) return;
+    if (!gesture.moved) { remember(); gesture.moved = true; }
+    gesture.item.pts = gesture.orig.map((v, i) => Math.round((v + (i % 2 ? dy : dx)) * 10) / 10);
+    redrawItem('stroke');
+  }
+});
+
+function endPointer(e) {
+  if (!pointers.has(e.pointerId)) return;
+  pointers.delete(e.pointerId);
+  if (!gesture) return;
+  if (gesture.kind === 'pinch') {
+    if (pointers.size === 0) gesture = null;
+    return;
+  }
+  if (gesture.kind === 'draw') {
+    const pts = gesture.pts;
+    if (pts.length === 2) pts.push(pts[0], pts[1]);
+    remember();
+    ed.board.data.strokes.push({ id: uid(), color: ed.color, w: gesture.w, pts });
+    renderStrokes();
+    scheduleSave();
+  } else if ((gesture.kind === 'move' && gesture.moved) || (gesture.kind === 'moveStroke' && gesture.moved) || (gesture.kind === 'erase' && gesture.erased)) {
+    scheduleSave();
+  }
+  gesture = null;
+}
+stage.addEventListener('pointerup', endPointer);
+stage.addEventListener('pointercancel', endPointer);
+
+stage.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const c = toBoard(e);
+  if (e.ctrlKey || e.metaKey || Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+    zoomAt(Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.002)), c.x, c.y);
+  } else {
+    const rect = svg.getBoundingClientRect();
+    ed.view.x += e.deltaX * (ed.view.w / rect.width);
+    applyView();
+  }
+}, { passive: false });
+
+/* ─────────────── 도구 · 단추 ─────────────── */
+
+function setTool(tool) {
+  ed.tool = tool;
+  document.querySelectorAll('.tool[data-tool]').forEach((b) => b.classList.toggle('active', b.dataset.tool === tool));
+  $('#penOpts').hidden = !(tool === 'pen' || tool === 'text');
+  stage.dataset.tool = tool;
+}
+
+function renderPenOpts() {
+  $('#swatches').innerHTML = COLORS.map((c) => `<button data-c="${c}" class="${ed.color === c ? 'on' : ''}" style="--c:${c}" aria-label="색"></button>`).join('');
+  $('#widths').innerHTML = WIDTHS.map((w) => `<button data-w="${w}" class="${ed.width === w ? 'on' : ''}" aria-label="굵기"><i style="width:${w * 1.5 + 4}px;height:${w * 1.5 + 4}px"></i></button>`).join('');
+  $('#swatches').querySelectorAll('button').forEach((b) => (b.onclick = () => { ed.color = b.dataset.c; renderPenOpts(); }));
+  $('#widths').querySelectorAll('button').forEach((b) => (b.onclick = () => { ed.width = Number(b.dataset.w); renderPenOpts(); }));
+}
+
+function openPanel(on) {
+  $('#panel').classList.toggle('open', on);
+  $('#panelToggle').classList.toggle('on', on);
+}
+
+function bindEditor() {
+  renderPenOpts();
+  document.querySelectorAll('.tool[data-tool]').forEach((b) => (b.onclick = () => setTool(b.dataset.tool)));
+  $('#undoBtn').onclick = doUndo;
+  $('#redoBtn').onclick = doRedo;
+  $('#zoomIn').onclick = () => zoomAt(1.25, ed.view.x + ed.view.w / 2, ed.view.y + ed.view.h / 2);
+  $('#zoomOut').onclick = () => zoomAt(0.8, ed.view.x + ed.view.w / 2, ed.view.y + ed.view.h / 2);
+  $('#zoomFit').onclick = fitView;
+  $('#edBack').onclick = () => adminGo('');
+  $('#panelToggle').onclick = () => openPanel(!$('#panel').classList.contains('open'));
+  $('#panelGrip').onclick = () => openPanel(false);
+  $('#edTitle').addEventListener('input', scheduleSave);
+  $('#planNote').addEventListener('input', () => { ed.board.data.note = $('#planNote').value; scheduleSave(); });
+  $('#edMore').onclick = moreMenu;
+
+  $('#todoForm').onsubmit = (e) => {
+    e.preventDefault();
+    const text = $('#todoText').value.trim();
+    if (!text) return;
+    ed.board.data.todos.push({ id: uid(), text: text.slice(0, 300), date: $('#todoDate').value || '', done: false });
+    $('#todoText').value = '';
+    renderTodos();
+    scheduleSave();
+  };
+
+  // 새로 놓는 조명은 마지막으로 고른 색온도·종류를 따라갑니다.
+  $('#propBox').addEventListener('change', () => {
+    const l = ed.selected?.type === 'light' && findSelected();
+    if (l) { ed.lastKelvin = l.k; ed.lastKind = l.kind; }
+  });
+  $('#propBox').addEventListener('click', () => {
+    const l = ed.selected?.type === 'light' && findSelected();
+    if (l) { ed.lastKelvin = l.k; ed.lastKind = l.kind; }
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if ($('#editorScreen').hidden) return;
+    const typing = e.target.closest('input, textarea, [contenteditable]');
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !typing) {
+      e.preventDefault();
+      e.shiftKey ? doRedo() : doUndo();
+      return;
+    }
+    if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
+    const map = { v: 'select', p: 'pen', l: 'light', t: 'text', e: 'eraser' };
+    if (map[e.key.toLowerCase()]) setTool(map[e.key.toLowerCase()]);
+    if ((e.key === 'Delete' || e.key === 'Backspace') && ed.selected) deleteSelected();
+    if (e.key === 'Escape') select(null);
+  });
+
+  $('#bgInput').onchange = async (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    toast('도면·사진을 올리는 중이에요');
+    try {
+      const blob = await resizeImage(file, 2400);
+      const { key } = await api('/api/images', { method: 'POST', raw: blob, type: blob.type });
+      ed.board.data.bg = key;
+      ed.board.data.bgOpacity = ed.board.data.bgOpacity || 1;
+      renderBackground();
+      scheduleSave();
+      toast('배경을 넣었어요');
+    } catch (err) {
+      toast(err.message);
+    }
+  };
+}
+
+function moreMenu() {
+  const d = ed.board.data;
+  openSheet(`
+    <h2>더보기</h2>
+    <ul class="options">
+      <li><button data-a="bg">${d.bg ? '배경 도면·사진 바꾸기' : '배경에 도면·사진 넣기'}</button></li>
+      ${d.bg ? `<li><button data-a="fade">${d.bgOpacity < 1 ? '배경 진하게' : '배경 흐리게'}</button></li><li><button data-a="nobg">배경 빼기</button></li>` : ''}
+      <li><button data-a="grid">${d.grid ? '격자 숨기기' : '격자 보이기'}</button></li>
+      <li><button data-a="png">그림으로 저장 (PNG)</button></li>
+      <li><button data-a="del" style="color:var(--red)">이 계획 지우기</button></li>
+    </ul>`);
+  sheetBody().querySelectorAll('[data-a]').forEach((b) => (b.onclick = async () => {
+    const a = b.dataset.a;
+    await closeSheet();
+    if (a === 'bg') $('#bgInput').click();
+    if (a === 'fade') { d.bgOpacity = d.bgOpacity < 1 ? 1 : 0.4; renderBackground(); scheduleSave(); }
+    if (a === 'nobg') { d.bg = null; renderBackground(); scheduleSave(); }
+    if (a === 'grid') { d.grid = !d.grid; renderBackground(); scheduleSave(); }
+    if (a === 'png') exportPng();
+    if (a === 'del') confirmDeleteBoard();
+  }));
+}
+
+function confirmDeleteBoard() {
+  openSheet(`
+    <h2>이 계획을 지울까요?</h2>
+    <p style="color:var(--text-2);margin:-8px 0 24px">그림, 조명, 할 일, 메모가 모두 지워지고 되돌릴 수 없어요.</p>
+    <div class="btn-row"><button class="btn ghost" id="no">취소</button><button class="btn" style="background:var(--red)" id="yes">지우기</button></div>`);
+  $('#no').onclick = () => closeSheet();
+  $('#yes').onclick = async () => {
+    setBusy($('#yes'), true);
+    try {
+      clearTimeout(ed.saveTimer);
+      ed.dirty = false;
+      await api(`/api/boards/${ed.board.id}`, { method: 'DELETE' });
+      ed.board = null;
+      await closeSheet();
+      adminGo('');
+      toast('지웠어요');
+    } catch (err) {
+      toast(err.message);
+      setBusy($('#yes'), false);
+    }
+  };
+}
+
+async function exportPng() {
+  toast('그림을 만드는 중이에요');
+  try {
+    const box = contentBox() || { x: 0, y: 0, w: W, h: H };
+    const pad = Math.max(box.w, box.h) * 0.05;
+    const vb = { x: box.x - pad, y: box.y - pad, w: box.w + pad * 2, h: box.h + pad * 2 };
+    const scale = 3000 / Math.max(vb.w, vb.h);
+    const cw = Math.round(vb.w * scale);
+    const ch = Math.round(vb.h * scale);
+    // 그림 크기에 맞춰 조명 이름표를 다시 그립니다 (화면 확대 정도와 상관없이 읽히는 크기)
+    renderLights(2 / scale);
+    const clone = svg.cloneNode(true);
+    renderLights();
+    clone.setAttribute('viewBox', `${vb.x} ${vb.y} ${vb.w} ${vb.h}`);
+    clone.setAttribute('width', cw);
+    clone.setAttribute('height', ch);
+    clone.querySelector('#layerSelect').innerHTML = '';
+    const bg = clone.querySelector('#bgImage');
+    if (ed.board.data.bg) {
+      // 그림 파일 안에 배경 사진을 직접 넣어야 PNG 에 같이 나옵니다.
+      const blob = await (await fetch(`/_blob/${ed.board.data.bg}`)).blob();
+      bg.setAttribute('href', await new Promise((r) => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(blob); }));
+    }
+    const src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(new XMLSerializer().serializeToString(clone))}`;
+    const img = new Image();
+    await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = src; });
+    const canvas = document.createElement('canvas');
+    canvas.width = cw;
+    canvas.height = ch;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, cw, ch);
+    ctx.drawImage(img, 0, 0, cw, ch);
+    const filename = `${($('#edTitle').value || '계획').replace(/[\\/:*?"<>|]/g, '')}.png`;
+    const blob = await new Promise((r) => canvas.toBlob(r, 'image/png'));
+    const downloads = await window.claude?.use?.('downloads');
+    if (!downloads) { toast('이 화면에서는 파일로 저장할 수 없어요'); return; }
+    await downloads.save({ filename, data: blob }).catch(() => toast('저장을 취소했어요'));
+  } catch {
+    renderLights();
+    toast('그림으로 저장하지 못했어요');
+  }
+}
+
+function uid() {
+  return Math.random().toString(36).slice(2, 10);
+}
+
+}
+// ===== 메인 화면 (app.js) =====
+{
+// 레퍼런스 — 화면 동작
+// 검색·필터는 서버에 다시 묻지 않고, 한 번 받아온 목록에서 바로 거릅니다(입력하는 즉시 결과가 바뀜).
+
+
+const state = {
+  items: [],
+  artists: [],
+  loggedIn: false,
+  loaded: false,
+  q: '',
+  artist: '',
+  tags: new Set(),
+  sort: 'new',
+  mode: localGet('viewMode') || 'grid',
+  artistQ: '',
+};
+
+const SORTS = { new: '최신순', old: '오래된순', title: '제목순', artist: '작가순' };
+
+/* ─────────────── 시작 ─────────────── */
+
+init();
+
+async function init() {
+  bindStatic();
+  renderSkeleton();
+  const [session] = await Promise.all([api('/api/session').catch(() => ({})), loadAll()]);
+  state.loggedIn = !!session.loggedIn;
+  state.open = !!session.open;
+  renderAuth();
+  route();
+}
+
+async function loadAll() {
+  try {
+    const [a, b] = await Promise.all([api('/api/items'), api('/api/artists')]);
+    state.items = a.items;
+    state.artists = b.artists;
+    state.loaded = true;
+  } catch (err) {
+    state.loaded = true;
+    toast(err.message || '불러오지 못했습니다.');
+  }
+  renderAll();
+}
+
+function renderAll() {
+  renderTagChips();
+  renderGrid();
+  renderFilterLabels();
+  renderArtists();
+  if (currentRoute().name === 'artist') renderArtistPage(currentRoute().arg);
+}
+
+/* ─────────────── 화면 이동 (주소 뒤 #) ─────────────── */
+
+function currentRoute() {
+  const h = navHash.replace(/^#\/?/, '');
+  if (h.startsWith('artist/')) return { name: 'artist', arg: h.slice(7) };
+  if (h === 'artists') return { name: 'artists' };
+  return { name: 'home' };
+}
+
+function go(hash) {
+  navHash = decodeURIComponent(hash);
+  route();
+}
+
+function route() {
+  const r = currentRoute();
+  $('#view-home').hidden = r.name !== 'home';
+  $('#view-artists').hidden = r.name !== 'artists';
+  $('#view-artist').hidden = r.name !== 'artist';
+  document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === (r.name === 'home' ? 'home' : 'artists')));
+  if (r.name === 'artist') renderArtistPage(r.arg);
+  window.scrollTo({ top: 0 });
+}
+
+let navHash = '#/';
+
+function bindStatic() {
+  $('#brand').onclick = () => { resetFilters(); go('#/'); };
+  document.querySelectorAll('.tab').forEach((t) => (t.onclick = () => go(t.dataset.tab === 'home' ? '#/' : '#/artists')));
+  $('#addBtn').onclick = () => (state.loggedIn ? openEditor() : openLogin(() => openEditor()));
+  $('#loginBtn').onclick = () => (state.loggedIn ? logoutFlow() : openLogin());
+  $('#adminBtn').onclick = () => showScreen('admin');
+  $('#artistBack').onclick = () => go('#/artists');
+
+  $('#search').addEventListener('input', (e) => { state.q = e.target.value; renderGrid(); });
+  $('#artistSearch').addEventListener('input', (e) => { state.artistQ = e.target.value; renderArtists(); });
+  $('#artistFilterBtn').onclick = pickArtist;
+  $('#sortBtn').onclick = pickSort;
+  $('#viewModeBtn').onclick = () => {
+    state.mode = state.mode === 'grid' ? 'rows' : 'grid';
+    localSet('viewMode', state.mode);
+    renderFilterLabels();
+    renderGrid();
+  };
+
+  // 한쪽 키: 키보드의 \ (원화 ₩) 키를 누르면 관리 화면으로 갑니다. 입력칸에 글을 쓰는 중에는 무시합니다.
+  document.addEventListener('keydown', (e) => {
+    if ($('#mainScreen').hidden) return;
+    if (e.target.closest('input, textarea') || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === '\\' || e.key === '₩' || e.code === 'Backslash') showScreen('admin');
+    if (e.key === '/') { e.preventDefault(); go('#/'); $('#search').focus(); }
+  });
+
+  $('#viewerClose').onclick = () => ($('#viewer').hidden = true);
+  $('#viewer').onclick = (e) => { if (e.target.id === 'viewer') $('#viewer').hidden = true; };
+}
+
+function renderAuth() {
+  $('#loginBtn').textContent = state.loggedIn ? '로그아웃' : '로그인';
+  $('#loginBtn').hidden = !!state.open; // 비밀번호 없는 열린 모드에서는 로그인 단추를 숨깁니다
+}
+
+/* ─────────────── 검색 · 필터 ─────────────── */
+
+function resetFilters() {
+  state.q = '';
+  state.artist = '';
+  state.tags.clear();
+  $('#search').value = '';
+  renderAll();
+}
+
+function matches(item, q) {
+  if (!q) return true;
+  const hay = [item.title, item.artist, item.memo, item.source, ...item.tags].join(' ').toLowerCase();
+  const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+  return words.every((w) => {
+    if (hay.includes(w.replace(/^#/, ''))) return true;
+    // 초성만 입력해도 찾기 (예: ㄱㅎ → 고흐)
+    if (/^[ㄱ-ㅎ]+$/.test(w)) return choseong(hay).includes(w);
+    return false;
+  });
+}
+
+function filtered() {
+  const list = state.items.filter((it) =>
+    matches(it, state.q.trim()) &&
+    (!state.artist || it.artist === state.artist) &&
+    [...state.tags].every((t) => it.tags.includes(t))
+  );
+  const by = {
+    new: (a, b) => b.createdAt - a.createdAt,
+    old: (a, b) => a.createdAt - b.createdAt,
+    title: (a, b) => (a.title || '').localeCompare(b.title || '', 'ko'),
+    artist: (a, b) => (a.artist || '힣').localeCompare(b.artist || '힣', 'ko') || b.createdAt - a.createdAt,
+  }[state.sort];
+  return list.sort(by);
+}
+
+function allTags() {
+  const count = new Map();
+  state.items.forEach((it) => it.tags.forEach((t) => count.set(t, (count.get(t) || 0) + 1)));
+  return [...count.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'ko'));
+}
+
+function renderTagChips() {
+  const tags = allTags();
+  const box = $('#tagChips');
+  box.hidden = !tags.length;
+  box.innerHTML =
+    `<button class="chip ${state.tags.size ? '' : 'on'}" data-tag="">전체</button>` +
+    tags.map(([t]) => `<button class="chip ${state.tags.has(t) ? 'on' : ''}" data-tag="${esc(t)}">#${esc(t)}</button>`).join('');
+  box.querySelectorAll('.chip').forEach((b) => (b.onclick = () => {
+    const t = b.dataset.tag;
+    if (!t) state.tags.clear();
+    else state.tags.has(t) ? state.tags.delete(t) : state.tags.add(t);
+    renderTagChips();
+    renderGrid();
+  }));
+}
+
+function renderFilterLabels() {
+  $('#artistFilterLabel').textContent = state.artist || '모든 작가';
+  $('#artistFilterBtn').classList.toggle('on', !!state.artist);
+  $('#sortLabel').textContent = SORTS[state.sort];
+  $('#viewModeLabel').textContent = state.mode === 'grid' ? '목록으로' : '사진으로';
+}
+
+function pickArtist() {
+  const names = state.artists;
+  openSheet(`
+    <h2>작가 고르기</h2>
+    <ul class="options">
+      <li><button data-v="" class="${state.artist ? '' : 'on'}">모든 작가 <span class="n">${state.items.length}</span></button></li>
+      ${names.map((a) => `<li><button data-v="${esc(a.name)}" class="${state.artist === a.name ? 'on' : ''}">${esc(a.name)} <span class="n">${a.count}</span></button></li>`).join('')}
+    </ul>`);
+  sheetBody().querySelectorAll('[data-v]').forEach((b) => (b.onclick = () => {
+    state.artist = b.dataset.v;
+    closeSheet();
+    renderFilterLabels();
+    renderGrid();
+  }));
+}
+
+function pickSort() {
+  openSheet(`<h2>정렬</h2><ul class="options">${Object.entries(SORTS)
+    .map(([k, v]) => `<li><button data-v="${k}" class="${state.sort === k ? 'on' : ''}">${v}</button></li>`).join('')}</ul>`);
+  sheetBody().querySelectorAll('[data-v]').forEach((b) => (b.onclick = () => {
+    state.sort = b.dataset.v;
+    closeSheet();
+    renderFilterLabels();
+    renderGrid();
+  }));
+}
+
+/* ─────────────── 카드 목록 ─────────────── */
+
+function cardHtml(it) {
+  const img = it.images[0];
+  const media = img
+    ? `<div class="item-media"><img class="item-img" src="/_blob/${img}" alt="" loading="lazy" decoding="async" />${it.images.length > 1 ? `<span class="item-count">${it.images.length}</span>` : ''}</div>`
+    : `<div class="item-media"><div class="item-noimg">${esc(it.memo || it.title)}</div></div>`;
+  return `<button class="item" data-id="${it.id}">
+    ${media}
+    <div class="item-meta">
+      ${it.title ? `<p class="item-title">${esc(it.title)}</p>` : ''}
+      ${it.artist ? `<div class="item-artist">${esc(it.artist)}</div>` : ''}
+      ${it.memo ? `<div class="item-memo">${esc(it.memo)}</div>` : ''}
+    </div>
+  </button>`;
+}
+
+function bindCards(root) {
+  root.querySelectorAll('.item').forEach((b) => (b.onclick = () => openDetail(b.dataset.id)));
+}
+
+function renderSkeleton() {
+  $('#grid').innerHTML = [180, 240, 140, 220, 260, 160].map((h) => `<div class="skeleton" style="height:${h}px"></div>`).join('');
+}
+
+function renderGrid() {
+  if (!state.loaded) return;
+  const list = filtered();
+  const grid = $('#grid');
+  grid.classList.toggle('rows', state.mode === 'rows');
+  grid.innerHTML = list.map(cardHtml).join('');
+  bindCards(grid);
+
+  const anyFilter = state.q.trim() || state.artist || state.tags.size;
+  $('#resultCount').textContent = state.items.length ? (anyFilter ? `${list.length}개 찾음` : `전체 ${list.length}개`) : '';
+
+  const empty = $('#empty');
+  empty.hidden = list.length > 0;
+  if (!state.items.length) {
+    empty.innerHTML = `<strong>아직 모아둔 레퍼런스가 없어요</strong>마음에 드는 사진과 생각을 하나씩 모아보세요.<br><button class="btn" id="emptyAdd">첫 레퍼런스 추가하기</button>`;
+    $('#emptyAdd').onclick = () => $('#addBtn').click();
+  } else if (!list.length) {
+    empty.innerHTML = `<strong>찾는 레퍼런스가 없어요</strong>다른 말로 찾거나 필터를 풀어보세요.<br><button class="btn ghost" id="emptyReset">필터 모두 풀기</button>`;
+    $('#emptyReset').onclick = resetFilters;
+  }
+}
+
+/* ─────────────── 작가 ─────────────── */
+
+function artistThumb(name) {
+  const it = state.items.find((i) => i.artist === name && i.images.length);
+  return it ? `<img src="/_blob/${it.images[0]}" alt="" loading="lazy" />` : esc(name.slice(0, 1));
+}
+
+function renderArtists() {
+  const q = state.artistQ.trim().toLowerCase();
+  const list = state.artists.filter((a) => !q || a.name.toLowerCase().includes(q) || (/^[ㄱ-ㅎ]+$/.test(q) && choseong(a.name).includes(q)));
+  $('#artistList').innerHTML = list.map((a) => `
+    <li><button data-name="${esc(a.name)}">
+      <div class="avatar">${artistThumb(a.name)}</div>
+      <div class="list-main">
+        <div class="list-title">${esc(a.name)}</div>
+        <div class="list-sub">${a.description ? esc(a.description.split('\n')[0]) : '아직 소개가 없어요'}</div>
+      </div>
+      <span class="list-count">${a.count}</span>
+    </button></li>`).join('');
+  $('#artistList').querySelectorAll('button').forEach((b) => (b.onclick = () => go(`#/artist/${encodeURIComponent(b.dataset.name)}`)));
+  const empty = $('#artistEmpty');
+  empty.hidden = list.length > 0;
+  empty.innerHTML = state.artists.length
+    ? '<strong>찾는 작가가 없어요</strong>'
+    : '<strong>아직 작가가 없어요</strong>레퍼런스를 추가할 때 작가 이름을 적으면<br>여기에 작가별로 모입니다.';
+}
+
+function renderArtistPage(name) {
+  if (!state.loaded) return;
+  const a = state.artists.find((x) => x.name === name) || { name, count: 0, description: '', sources: [] };
+  const works = state.items.filter((i) => i.artist === name).sort((x, y) => y.createdAt - x.createdAt);
+  $('#artistAvatar').innerHTML = artistThumb(name);
+  $('#artistName').textContent = name;
+  $('#artistCount').textContent = `레퍼런스 ${works.length}개`;
+
+  const text = $('#aiText');
+  text.textContent = a.description || '아직 소개가 없어요. "AI로 설명 만들기"를 누르면 AI가 이 작가를 간단히 소개해 줍니다.';
+  text.classList.toggle('muted', !a.description);
+  $('#aiBadge').textContent = a.description ? (a.byAi ? 'AI가 쓴 소개' : '직접 쓴 소개') : '작가 소개';
+  $('#aiBtn').textContent = a.description && a.byAi ? '다시 만들기' : 'AI로 설명 만들기';
+  $('#aiSources').innerHTML = (a.sources || []).map((s) => `<li><a href="${esc(s.uri)}" target="_blank" rel="noopener noreferrer">${esc(s.title)}</a></li>`).join('');
+  $('#aiNote').textContent = a.byAi ? 'AI 설명은 틀릴 수 있어요. 중요한 내용은 꼭 따로 확인하세요.' : '';
+  showAiEdit(false);
+
+  $('#aiBtn').onclick = () => (state.loggedIn ? runAi(name) : openLogin(() => runAi(name)));
+  $('#aiEditBtn').onclick = () => (state.loggedIn ? startAiEdit(a) : openLogin(() => startAiEdit(a)));
+
+  const grid = $('#artistGrid');
+  grid.innerHTML = works.map(cardHtml).join('');
+  bindCards(grid);
+}
+
+function showAiEdit(on) {
+  $('#aiEdit').hidden = !on;
+  $('#aiEditActions').hidden = !on;
+  $('#aiText').hidden = on;
+  $('#aiSources').hidden = on;
+}
+
+function startAiEdit(a) {
+  showAiEdit(true);
+  const ta = $('#aiEdit');
+  ta.value = a.description || '';
+  ta.focus();
+  $('#aiEditCancel').onclick = () => showAiEdit(false);
+  $('#aiEditSave').onclick = async () => {
+    setBusy($('#aiEditSave'), true);
+    try {
+      await api(`/api/artists/${encodeURIComponent(a.name)}`, { method: 'PUT', body: { description: ta.value } });
+      await refreshArtists();
+      toast('저장했어요');
+    } catch (err) {
+      toast(err.message);
+    }
+    setBusy($('#aiEditSave'), false);
+  };
+}
+
+async function runAi(name) {
+  const btn = $('#aiBtn');
+  setBusy(btn, true);
+  $('#aiText').textContent = 'AI가 작가 소개를 쓰고 있어요… (10초쯤 걸려요)';
+  $('#aiText').classList.add('muted');
+  try {
+    await api(`/api/artists/${encodeURIComponent(name)}/ai`, { method: 'POST' });
+    await refreshArtists();
+    toast('작가 소개를 만들었어요');
+  } catch (err) {
+    toast(err.message);
+    renderArtistPage(name);
+  }
+  setBusy(btn, false);
+}
+
+async function refreshArtists() {
+  const b = await api('/api/artists');
+  state.artists = b.artists;
+  renderAll();
+}
+
+/* ─────────────── 상세 ─────────────── */
+
+function openDetail(id) {
+  const it = state.items.find((i) => i.id === id);
+  if (!it) return;
+  const imgs = it.images;
+  openSheet(`
+    ${imgs.length ? `<div class="carousel ${imgs.length > 1 ? 'multi' : ''}" id="carousel">${imgs.map((k) => `<img src="/_blob/${k}" alt="" />`).join('')}</div>
+      ${imgs.length > 1 ? `<div class="dots" id="dots">1 / ${imgs.length}</div>` : ''}` : ''}
+    ${it.title ? `<h2 class="detail-title">${esc(it.title)}</h2>` : '<div style="height:8px"></div>'}
+    ${it.artist ? `<button class="detail-artist" id="dArtist">${esc(it.artist)} ${ICON.chevron}</button>` : ''}
+    ${it.memo ? `<p class="detail-memo">${esc(it.memo)}</p>` : ''}
+    ${it.tags.length ? `<div class="detail-tags">${it.tags.map((t) => `<button data-tag="${esc(t)}">#${esc(t)}</button>`).join('')}</div>` : ''}
+    ${it.source ? (/^https?:\/\//i.test(it.source)
+      ? `<a class="detail-source" href="${esc(it.source)}" target="_blank" rel="noopener noreferrer">출처 · ${esc(it.source)}</a>`
+      : `<span class="detail-source">출처 · ${esc(it.source)}</span>`) : ''}
+    <p class="detail-date">${fmtDate(it.createdAt)} 저장${it.updatedAt !== it.createdAt ? ` · ${fmtDate(it.updatedAt)} 수정` : ''}</p>
+    <div class="btn-row detail-actions">
+      <button class="btn danger" id="dDel">삭제</button>
+      <button class="btn" id="dEdit">수정하기</button>
+    </div>`);
+
+  const car = $('#carousel');
+  if (car) {
+    car.querySelectorAll('img').forEach((img) => (img.onclick = () => { $('#viewerImg').src = img.src; $('#viewer').hidden = false; }));
+    if (imgs.length > 1) car.addEventListener('scroll', () => {
+      const i = Math.round(car.scrollLeft / (car.firstElementChild.offsetWidth + 8));
+      $('#dots').textContent = `${Math.min(i + 1, imgs.length)} / ${imgs.length}`;
+    }, { passive: true });
+  }
+  if ($('#dArtist')) $('#dArtist').onclick = async () => { await closeSheet(); go(`#/artist/${encodeURIComponent(it.artist)}`); };
+  sheetBody().querySelectorAll('[data-tag]').forEach((b) => (b.onclick = async () => {
+    await closeSheet();
+    state.tags = new Set([b.dataset.tag]);
+    state.artist = '';
+    go('#/');
+    renderAll();
+  }));
+  $('#dEdit').onclick = () => (state.loggedIn ? openEditor(it) : openLogin(() => openEditor(it)));
+  $('#dDel').onclick = () => (state.loggedIn ? confirmDelete(it) : openLogin(() => confirmDelete(it)));
+}
+
+function confirmDelete(it) {
+  openSheet(`
+    <h2>이 레퍼런스를 지울까요?</h2>
+    <p style="color:var(--text-2);margin:-8px 0 24px">사진과 메모가 모두 지워지고 되돌릴 수 없어요.</p>
+    <div class="btn-row"><button class="btn ghost" id="no">취소</button><button class="btn" style="background:var(--red)" id="yes">지우기</button></div>`);
+  $('#no').onclick = () => closeSheet();
+  $('#yes').onclick = async () => {
+    setBusy($('#yes'), true);
+    try {
+      await api(`/api/items/${it.id}`, { method: 'DELETE' });
+      state.items = state.items.filter((i) => i.id !== it.id);
+      closeSheet();
+      await refreshArtists();
+      toast('지웠어요');
+    } catch (err) {
+      toast(err.message);
+      setBusy($('#yes'), false);
+    }
+  };
+}
+
+/* ─────────────── 추가 · 수정 ─────────────── */
+
+function openEditor(it = null) {
+  const draft = {
+    images: it ? [...it.images] : [],
+    tags: it ? [...it.tags] : [],
+    newKeys: [], // 이번에 새로 올린 사진 (취소하면 지움)
+    uploading: 0,
+  };
+  const artistNames = state.artists.map((a) => a.name);
+
+  openSheet(`
+    <h2>${it ? '레퍼런스 수정' : '새 레퍼런스'}</h2>
+    <form class="form" id="editForm" autocomplete="off">
+      <div>
+        <span class="label">사진</span>
+        <div class="photos" id="photos"></div>
+        <input type="file" id="fileInput" accept="image/*" multiple hidden />
+      </div>
+      <div>
+        <label class="label" for="fTitle">제목</label>
+        <input class="field" id="fTitle" maxlength="200" placeholder="예) 따뜻한 조명의 카페 입구" value="${esc(it?.title || '')}" />
+      </div>
+      <div>
+        <label class="label" for="fArtist">작가</label>
+        <input class="field" id="fArtist" maxlength="100" list="artistNames" placeholder="예) 제임스 터렐" value="${esc(it?.artist || '')}" />
+        <datalist id="artistNames">${artistNames.map((n) => `<option value="${esc(n)}"></option>`).join('')}</datalist>
+      </div>
+      <div>
+        <label class="label" for="fMemo">메모</label>
+        <textarea class="field" id="fMemo" maxlength="10000" rows="5" placeholder="왜 좋았는지, 어디에 써먹을지 적어두세요">${esc(it?.memo || '')}</textarea>
+      </div>
+      <div>
+        <label class="label" for="fTag">태그</label>
+        <div class="tag-input" id="tagBox"><input id="fTag" placeholder="입력 후 엔터 (예: 조명)" maxlength="40" enterkeyhint="done" /></div>
+        <p class="hint">쉼표(,)나 엔터로 여러 개 넣을 수 있어요</p>
+      </div>
+      <div>
+        <label class="label" for="fSource">출처 (선택)</label>
+        <input class="field" id="fSource" maxlength="1000" placeholder="링크나 책 이름" value="${esc(it?.source || '')}" inputmode="url" />
+      </div>
+      <div class="btn-row">
+        <button class="btn ghost" type="button" id="fCancel">취소</button>
+        <button class="btn" type="submit" id="fSave">${it ? '저장' : '추가하기'}</button>
+      </div>
+    </form>`, { onClose: () => cleanupDraft(draft) });
+
+  const renderPhotos = () => {
+    $('#photos').innerHTML =
+      draft.images.map((k, i) => `<div class="photo ${k.startsWith('blob:') ? 'uploading' : ''}">
+        <img src="${k.startsWith('blob:') ? k : `/_blob/${k}`}" alt="" />
+        ${k.startsWith('blob:') ? '' : `<button type="button" class="photo-del" data-i="${i}" aria-label="사진 빼기">${ICON.x}</button>`}
+      </div>`).join('') +
+      `<button type="button" class="photo-add" id="photoAdd">${ICON.camera}<span>${draft.images.length ? '더 넣기' : '사진 넣기'}</span></button>`;
+    $('#photoAdd').onclick = () => $('#fileInput').click();
+    $('#photos').querySelectorAll('.photo-del').forEach((b) => (b.onclick = () => {
+      draft.images.splice(Number(b.dataset.i), 1);
+      renderPhotos();
+    }));
+  };
+  renderPhotos();
+
+  $('#fileInput').onchange = async (e) => {
+    const files = [...e.target.files].slice(0, 20 - draft.images.length);
+    e.target.value = '';
+    await Promise.all(files.map(async (file) => {
+      const preview = URL.createObjectURL(file);
+      draft.images.push(preview);
+      draft.uploading++;
+      renderPhotos();
+      try {
+        const blob = await resizeImage(file);
+        const { key } = await api('/api/images', { method: 'POST', raw: blob, type: blob.type });
+        draft.newKeys.push(key);
+        draft.images[draft.images.indexOf(preview)] = key;
+      } catch (err) {
+        draft.images.splice(draft.images.indexOf(preview), 1);
+        toast(err.message || '사진을 올리지 못했어요');
+      }
+      URL.revokeObjectURL(preview);
+      draft.uploading--;
+      renderPhotos();
+    }));
+  };
+
+  const renderTags = () => {
+    const box = $('#tagBox');
+    box.querySelectorAll('.tag').forEach((n) => n.remove());
+    const input = $('#fTag');
+    draft.tags.forEach((t, i) => {
+      const span = document.createElement('span');
+      span.className = 'tag';
+      span.innerHTML = `#${esc(t)}<button type="button" aria-label="태그 빼기">${ICON.x}</button>`;
+      span.querySelector('button').onclick = () => { draft.tags.splice(i, 1); renderTags(); };
+      box.insertBefore(span, input);
+    });
+  };
+  const addTags = (text) => {
+    text.split(/[,，#\n]/).map((s) => s.trim()).filter(Boolean).forEach((t) => {
+      if (!draft.tags.includes(t) && draft.tags.length < 30) draft.tags.push(t.slice(0, 40));
+    });
+    renderTags();
+  };
+  renderTags();
+  const tagInput = $('#fTag');
+  tagInput.addEventListener('keydown', (e) => {
+    if (e.isComposing) return; // 한글 조합 중에는 엔터를 무시 (마지막 글자 두 번 들어가는 문제 방지)
+    if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addTags(tagInput.value); tagInput.value = ''; }
+    else if (e.key === 'Backspace' && !tagInput.value && draft.tags.length) { draft.tags.pop(); renderTags(); }
+  });
+  tagInput.addEventListener('blur', () => { if (tagInput.value.trim()) { addTags(tagInput.value); tagInput.value = ''; } });
+
+  $('#fCancel').onclick = () => closeSheet();
+  $('#editForm').onsubmit = async (e) => {
+    e.preventDefault();
+    if (tagInput.value.trim()) { addTags(tagInput.value); tagInput.value = ''; }
+    if (draft.uploading) return toast('사진을 올리는 중이에요. 잠시만 기다려 주세요');
+    const body = {
+      title: $('#fTitle').value,
+      artist: $('#fArtist').value,
+      memo: $('#fMemo').value,
+      source: $('#fSource').value,
+      tags: draft.tags,
+      images: draft.images,
+    };
+    if (!body.title.trim() && !body.memo.trim() && !body.images.length) return toast('제목, 사진, 메모 중 하나는 넣어 주세요');
+    setBusy($('#fSave'), true);
+    try {
+      const res = it
+        ? await api(`/api/items/${it.id}`, { method: 'PUT', body })
+        : await api('/api/items', { method: 'POST', body });
+      draft.newKeys = []; // 저장했으니 지우지 않음
+      if (it) state.items = state.items.map((x) => (x.id === it.id ? res.item : x));
+      else state.items.unshift(res.item);
+      closeSheet();
+      await refreshArtists();
+      toast(it ? '수정했어요' : '추가했어요');
+    } catch (err) {
+      toast(err.message);
+      setBusy($('#fSave'), false);
+    }
+  };
+}
+
+function cleanupDraft(draft) {
+  // 올렸지만 저장하지 않은 사진은 지웁니다.
+  draft.newKeys.forEach((k) => api(`/api/images/${k}`, { method: 'DELETE' }).catch(() => {}));
+  draft.newKeys = [];
+}
+
+/* ─────────────── 로그인 ─────────────── */
+
+function openLogin(after) {
+  openSheet(`
+    <h2>비밀번호를 입력해 주세요</h2>
+    <p style="color:var(--text-2);margin:-8px 0 20px">추가 · 수정 · 삭제 · AI 설명은 로그인한 뒤에 할 수 있어요.</p>
+    <form class="form" id="loginForm">
+      <input class="field" id="pw" type="password" autocomplete="current-password" placeholder="비밀번호" required />
+      <button class="btn block" id="pwBtn" type="submit">로그인</button>
+    </form>`);
+  setTimeout(() => $('#pw')?.focus(), 250);
+  $('#loginForm').onsubmit = async (e) => {
+    e.preventDefault();
+    setBusy($('#pwBtn'), true);
+    try {
+      await api('/api/login', { method: 'POST', body: { password: $('#pw').value } });
+      state.loggedIn = true;
+      renderAuth();
+      await closeSheet();
+      toast('로그인했어요');
+      if (after) after();
+    } catch (err) {
+      toast(err.message);
+      setBusy($('#pwBtn'), false);
+      $('#pw').select();
+    }
+  };
+}
+
+async function logoutFlow() {
+  await api('/api/logout', { method: 'POST' }).catch(() => {});
+  state.loggedIn = false;
+  renderAuth();
+  toast('로그아웃했어요');
+}
+
+/* ─────────────── 기타 ─────────────── */
+
+function localGet(k) { try { return localStorage.getItem(`ref:${k}`); } catch { return null; } }
+function localSet(k, v) { try { localStorage.setItem(`ref:${k}`, v); } catch { /* 저장 안 되는 브라우저 */ } }
+
+refreshMain = () => loadAll();
+}
+
+</script>

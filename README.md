@@ -3,8 +3,17 @@
 사진과 메모로 아이디어를 모으고, 작가별로 정리하고, 언제든 검색해서 찾는 웹앱입니다.
 관리 화면에서는 조명 위치·색온도(K)·앞으로 할 일을 직접 그려서 계획합니다.
 
-- 사이트: https://zeminism-archive.pages.dev
-- 관리(작업 계획): https://zeminism-archive.pages.dev/admin
+- **지금 쓰는 주소 (Claude 아티팩트)**: https://claude.ai/artifact/WTetfftZg4dor2pEFnf2Zs
+  - 오른쪽 위 "계획" 키 → 작업 계획 보드
+- Cloudflare 주소 (비밀값을 넣고 배포하면 열림): https://zeminism-archive.pages.dev
+
+## Claude 아티팩트 판 (`artifact/`)
+
+Cloudflare 비밀값 없이 바로 쓰려고 만든 판입니다. 화면은 `app/` 과 같고, 저장만 다릅니다.
+- 글·작가 소개·계획 보드 → Claude 저장소(db), 사진 → Claude 사진 저장소(assets)
+- 작가 소개 AI → 구글 Gemini 대신 **Claude**. 인터넷 검색은 못 하고, 출처 링크도 없습니다.
+- 사진 기능을 쓰는 아티팩트는 **공개 링크로 공유할 수 없습니다** (Share 메뉴에서 사람을 초대해야 함).
+- `app/` 을 고친 뒤 `python3 artifact/build.py` → `artifact/reference.html` 을 다시 올리면 같은 주소가 갱신됩니다.
 
 ## 할 수 있는 것
 

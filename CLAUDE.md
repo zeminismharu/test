@@ -7,6 +7,7 @@
 - 작업을 마무리할 때는 맨 마지막에 실제 사이트 주소를 적습니다.
   - 사이트: https://zeminism-archive.pages.dev
   - 관리(작업 계획): https://zeminism-archive.pages.dev/admin
+  - 지금 쓰는 판(Claude 아티팩트): https://claude.ai/artifact/WTetfftZg4dor2pEFnf2Zs — `app/` 고친 뒤 `python3 artifact/build.py` 로 다시 만들고 같은 파일 경로로 올림
 
 ## 디자인
 - 토스 느낌: 흰 바탕, 회색 면(#F2F4F6), 파란 단추(#3182F6), 글자 #191F28, 큰 둥근 모서리, Pretendard 글꼴.
