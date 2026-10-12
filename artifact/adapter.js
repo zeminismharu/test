@@ -111,7 +111,7 @@ async function analyzeWithAi(key, items) {
   const prompt = [
     '첨부한 사진은 사용자가 아이디어 아카이브에 모으는 레퍼런스입니다. 사진을 보고 아래 키를 가진 JSON 객체 하나로만 답하세요.',
     '- category: "exhibition"(전시·미술관·갤러리·설치작품·작품 사진·전시 포스터), "movie"(영화 장면·스틸컷·영화 포스터·드라마), "etc"(그 외 전부) 중 하나',
-    '- title: 사진을 알아볼 수 있는 짧은 한국어 제목 (작품명·영화 제목을 알면 그것, 모르면 무엇이 보이는지)',
+    '- title: 전시면 전시 이름(전시명), 영화면 영화 제목. 알 수 없으면 무엇이 보이는지 짧은 한국어 제목. 개별 작품 이름은 memo 에',
     '- artist: 작가·감독·디자이너 이름. 확실할 때만, 모르면 ""',
     '- place: 전시관·미술관·갤러리 이름(전시일 때), 사진에 글자로 보이거나 확실할 때만. 모르면 ""',
     '- tags: 한국어 태그 2~5개 배열',
@@ -136,6 +136,58 @@ async function analyzeWithAi(key, items) {
     tags: (Array.isArray(o.tags) ? o.tags : []).map((t) => str(t, LIMITS.tag).replace(/^#/, '')).filter(Boolean).slice(0, 5),
     memo: str(o.memo, 500),
   };
+}
+
+// 여러 장을 같이 보여주고 같은 관람(같은 전시·영화)끼리 묶습니다. 한 번에 보낼 수 있는 장수를 넘으면 나눠 묻고 제목이 같은 묶음을 합칩니다.
+async function groupWithAi(photos, items) {
+  const sample = await need('sample');
+  const caps = await sample.limits().catch(() => null);
+  if (!caps?.images) fail('이 화면에서는 AI에게 사진을 보낼 수 없어요.', 503);
+  const existing = artistsOf(items);
+  const per = Math.max(1, caps.images.maxCount || 1);
+  const all = [];
+  for (let start = 0; start < photos.length; start += per) {
+    const chunk = photos.slice(start, start + per);
+    const prompt = [
+      `첨부한 사진 ${chunk.length}장은 사용자가 아이디어 아카이브에 한꺼번에 넣으려는 사진입니다. 번호는 첨부 순서대로 0부터입니다.`,
+      chunk.some((p) => p.date) ? `찍은 날짜: ${chunk.map((p, i) => `${i}=${p.date || '?'}`).join(', ')}` : '',
+      '같은 관람(같은 전시를 보러 가서 찍은 사진, 같은 영화의 장면·포스터)은 한 묶음으로 묶으세요. 다른 전시·다른 영화·관계없는 사진은 나누고, 확실하지 않으면 나누세요.',
+      '다음 JSON 하나로만 답하세요: {"groups":[{"photos":[번호...],"category":"exhibition|movie|etc","title":"전시 이름 또는 영화 제목(모르면 무엇을 봤는지)","artist":"확실할 때만, 모르면 \"\"","place":"전시관 이름, 모르면 \"\"","tags":["한국어 태그 2~5개"],"memo":"눈여겨볼 점 한두 문장"}]}',
+      '모든 사진 번호는 정확히 한 묶음에만 들어가야 합니다.',
+      existing.length ? `이미 저장한 작가: ${existing.slice(0, 300).join(', ')} — 같은 사람이면 이 이름을 그대로 쓰세요.` : '',
+    ].filter(Boolean).join('\n');
+    let o;
+    try {
+      o = await sample.json(prompt, { images: chunk.map((p) => p.blob), modelTier: 'default' });
+    } catch (err) {
+      if (err?.code === 'not_granted') fail('AI 사용을 허락하지 않아서 묶지 못했어요.', 403);
+      if (err?.code === 'rate_limited') fail('AI를 너무 자주 불렀어요. 잠시 뒤 다시 해 주세요.', 429);
+      fail('사진을 묶지 못했어요.', 502);
+    }
+    const seen = new Set();
+    for (const g of Array.isArray(o?.groups) ? o.groups : []) {
+      const idx = (Array.isArray(g?.photos) ? g.photos : []).map(Number).filter((n) => Number.isInteger(n) && n >= 0 && n < chunk.length && !seen.has(n));
+      idx.forEach((n) => seen.add(n));
+      if (idx.length) all.push({ g, photos: idx.map((n) => n + start) });
+    }
+    for (let i = 0; i < chunk.length; i++) if (!seen.has(i)) all.push({ g: {}, photos: [i + start] });
+  }
+  // 나눠 물은 묶음 중 분류·제목이 같은 것은 합칩니다.
+  const out = [];
+  for (const { g, photos: ph } of all) {
+    const clean = {
+      category: CATEGORIES.includes(g.category) ? g.category : 'etc',
+      title: str(g.title, LIMITS.title),
+      artist: matchArtist(g.artist, existing),
+      place: str(g.place, LIMITS.place),
+      tags: (Array.isArray(g.tags) ? g.tags : []).map((t) => str(t, LIMITS.tag).replace(/^#/, '')).filter(Boolean).slice(0, 5),
+      memo: str(g.memo, 500),
+    };
+    const twin = clean.title && out.find((x) => x.category === clean.category && artistKeyOf(x.title) === artistKeyOf(clean.title));
+    if (twin) twin.photos.push(...ph);
+    else out.push({ photos: ph, ...clean });
+  }
+  return out;
 }
 
 async function describeWithAi(name, items) {
@@ -214,6 +266,12 @@ export async function api(path, { method = 'GET', body, raw } = {}) {
       await Promise.all(prev.images.map((k) => assets?.delete(k).catch(() => {})));
       return { ok: true };
     }
+  }
+
+  if (head === 'group' && m === 'POST') {
+    const photos = Array.isArray(body?.photos) ? body.photos.filter((p) => p?.blob) : [];
+    if (!photos.length) fail('사진이 없습니다.');
+    return { groups: await groupWithAi(photos.slice(0, 30), await allItems(db)) };
   }
 
   if (head === 'analyze' && m === 'POST') {

@@ -588,6 +588,32 @@ function openEditor(it = null) {
       if (s.tags?.length) addTags(s.tags.join(','));
       if (draft.tags.length > before) filled.push('태그');
       hint(filled.length ? `AI가 채웠어요: ${filled.join(', ')}. 틀리면 고쳐 주세요.` : 'AI가 더 채울 것을 찾지 못했어요.');
+      // 같은 관람 항목이 이미 있으면 거기에 합칠 수 있게 단추를 보여줍니다.
+      const same = !it && findSameViewing({ category: draft.category, title: $('#fTitle').value, place: $('#fPlace').value });
+      if (same) {
+        const box = $('#aiHint');
+        box.insertAdjacentHTML('beforeend', `<span class="ai-merge-line">같은 관람 같아요: "${esc(same.title)}" (사진 ${same.images.length}장)</span><button type="button" class="btn small" id="mergeBtn">그 항목에 사진 합치기</button>`);
+        $('#mergeBtn').onclick = async () => {
+          setBusy($('#mergeBtn'), true);
+          try {
+            const body = {
+              ...same,
+              images: [...same.images, ...draft.images.filter((k) => !k.startsWith('blob:'))].slice(0, 20),
+              tags: [...new Set([...same.tags, ...draft.tags])].slice(0, 30),
+              memo: [same.memo, $('#fMemo').value.trim()].filter(Boolean).join('\n'),
+            };
+            const { item } = await api(`/api/items/${same.id}`, { method: 'PUT', body });
+            state.items = state.items.map((x) => (x.id === same.id ? item : x));
+            draft.newKeys = []; // 합쳤으니 지우지 않음
+            await closeSheet();
+            renderAll();
+            toast(`"${item.title}"에 사진을 합쳤어요`);
+          } catch (err) {
+            toast(err.message);
+            setBusy($('#mergeBtn'), false);
+          }
+        };
+      }
     } catch (err) {
       hint(`AI 자동 채우기를 못 했어요: ${err.message}`);
     }
@@ -667,7 +693,7 @@ function openAddChoice() {
     <div class="choice-list">
       <button class="choice" id="chBulk" type="button">
         <span class="choice-ic">${ICON.stack}</span>
-        <span><strong>사진 여러 장 한꺼번에</strong><small>AI가 장마다 전시관·영화·그 외로 나누고, 작가·제목·전시관 이름까지 채워서 따로 저장해요</small></span>
+        <span><strong>사진 여러 장 한꺼번에</strong><small>AI가 같은 전시·같은 영화 사진끼리 한 항목으로 묶고, 전시관·영화·그 외로 나눠 저장해요</small></span>
       </button>
       <button class="choice" id="chOne" type="button">
         <span class="choice-ic">${ICON.pencil}</span>
@@ -684,72 +710,180 @@ function openAddChoice() {
   };
 }
 
-// 한 장씩 차례로: 사진 올리기 → AI 분석 → 레퍼런스로 저장. 앞에서 저장한 작가 이름을 뒤 사진이 이어받아 같은 작가로 모입니다.
+// 같은 관람(같은 전시·같은 영화)인지 비교할 때 띄어쓰기·기호·대소문자는 무시합니다.
+const keyOf = (v) => String(v || '').toLowerCase().normalize('NFC').replace(/[\s.\-_·'"()\[\]<>《》「」:]/g, '');
+
+// 이미 있는 항목 중 같은 관람을 찾습니다: 분류와 제목(전시 이름·영화 제목)이 같고, 전시관 이름이 둘 다 있으면 그것도 같아야 함.
+function findSameViewing(g, exceptId = '') {
+  const t = keyOf(g.title);
+  if (!t) return null;
+  return state.items.find((it) => it.id !== exceptId && it.category === g.category && keyOf(it.title) === t &&
+    (!g.place || !it.place || keyOf(it.place) === keyOf(g.place))) || null;
+}
+
+// JPEG 사진 속 찍은 날짜(EXIF)를 읽습니다. 없으면 ''. 같은 날 찍은 사진을 묶는 데 참고합니다.
+async function photoDate(file) {
+  try {
+    const buf = new DataView(await file.slice(0, 256 * 1024).arrayBuffer());
+    if (buf.getUint16(0) !== 0xffd8) return '';
+    let off = 2;
+    while (off + 4 < buf.byteLength) {
+      const marker = buf.getUint16(off);
+      const size = buf.getUint16(off + 2);
+      if (marker === 0xffe1 && buf.getUint32(off + 4) === 0x45786966) { // "Exif"
+        const tiff = off + 10;
+        const le = buf.getUint16(tiff) === 0x4949;
+        const u16 = (o) => buf.getUint16(tiff + o, le);
+        const u32 = (o) => buf.getUint32(tiff + o, le);
+        const readStr = (o, n) => { let r = ''; for (let i = 0; i < n - 1; i++) r += String.fromCharCode(buf.getUint8(tiff + o + i)); return r; };
+        const find = (ifd, tag) => {
+          const n = u16(ifd);
+          for (let i = 0; i < n; i++) { const e = ifd + 2 + i * 12; if (u16(e) === tag) return e; }
+          return -1;
+        };
+        const ifd0 = u32(4);
+        const exifPtr = find(ifd0, 0x8769);
+        let e = exifPtr >= 0 ? find(u32(exifPtr + 8), 0x9003) : -1; // 찍은 날짜
+        if (e < 0) e = find(ifd0, 0x0132); // 없으면 파일 날짜
+        if (e < 0) return '';
+        const v = readStr(u32(e + 8), 20); // "2026:10:12 14:03:22"
+        return /^\d{4}:\d\d:\d\d \d\d:\d\d/.test(v) ? `${v.slice(0, 4)}-${v.slice(5, 7)}-${v.slice(8, 10)} ${v.slice(11, 16)}` : '';
+      }
+      if ((marker & 0xff00) !== 0xff00) break;
+      off += 2 + size;
+    }
+  } catch { /* 날짜 없음 */ }
+  return '';
+}
+
+const blobToBase64 = (blob) => new Promise((resolve, reject) => {
+  const fr = new FileReader();
+  fr.onload = () => resolve(String(fr.result).split(',')[1] || '');
+  fr.onerror = reject;
+  fr.readAsDataURL(blob);
+});
+
+// AI가 묶지 못하면: 같은 날 찍은 사진끼리 한 항목 (날짜를 모르면 한 장씩)
+function groupByDay(photos) {
+  const byDay = new Map();
+  photos.forEach((p, i) => {
+    const day = p.date ? p.date.slice(0, 10) : `x${i}`;
+    if (!byDay.has(day)) byDay.set(day, []);
+    byDay.get(day).push(i);
+  });
+  return [...byDay.entries()].map(([day, idx]) => ({
+    photos: idx, category: 'etc', title: day.startsWith('x') ? '' : `${day.replace(/-/g, '.')} 사진`,
+    artist: '', place: '', tags: [], memo: '',
+  }));
+}
+
+// 여러 장 한꺼번에: ① 사진 올리기 ② AI가 같은 관람끼리 묶기 ③ 묶음마다 하나의 항목으로 저장 (같은 관람 항목이 이미 있으면 거기에 더함)
 async function runBulk(files) {
-  const rows = files.map((f) => ({ file: f, url: URL.createObjectURL(f), state: 'wait', text: '기다리는 중' }));
+  const photos = files.map((f) => ({ file: f, url: URL.createObjectURL(f), key: null, date: '', thumb: '' }));
   let stop = false;
   openSheet(`
-    <h2>사진 ${files.length}장 정리하는 중</h2>
+    <h2>사진 ${files.length}장 정리하기</h2>
+    <p class="bulk-step" id="bulkStep">사진 올리는 중… 0/${files.length}</p>
+    <div class="bulk-thumbs" id="bulkThumbs">${photos.map((p, i) => `<img src="${p.url}" alt="" data-i="${i}" />`).join('')}</div>
     <ul class="bulk-list" id="bulkList"></ul>
     <p class="hint" id="bulkSum"></p>
     <div class="btn-row" style="margin-top:16px"><button class="btn ghost" type="button" id="bulkStop">그만하기</button></div>`,
-  { onClose: () => { stop = true; rows.forEach((r) => URL.revokeObjectURL(r.url)); } });
+  { onClose: () => { stop = true; photos.forEach((p) => URL.revokeObjectURL(p.url)); } });
+  const step = (t) => { if ($('#bulkStep')) $('#bulkStep').textContent = t; };
+  $('#bulkStop').onclick = () => closeSheet();
+
+  // ① 올리기 (한 번에 3장씩)
+  let done = 0;
+  const queue = [...photos];
+  await Promise.all([0, 1, 2].map(async () => {
+    while (queue.length && !stop) {
+      const p = queue.shift();
+      try {
+        p.date = await photoDate(p.file);
+        const [big, small] = await Promise.all([resizeImage(p.file), resizeImage(p.file, 640)]);
+        p.thumb = await blobToBase64(small);
+        p.smallBlob = small;
+        ({ key: p.key } = await api('/api/images', { method: 'POST', raw: big, type: big.type }));
+      } catch (err) {
+        p.error = err.message || '올리지 못했어요';
+        $(`#bulkThumbs img[data-i="${photos.indexOf(p)}"]`)?.classList.add('fail');
+      }
+      step(`사진 올리는 중… ${++done}/${files.length}`);
+    }
+  }));
+  const ok = photos.filter((p) => p.key);
+  if (stop) { ok.forEach((p) => api(`/api/images/${p.key}`, { method: 'DELETE' }).catch(() => {})); return; }
+  if (!ok.length) { step('사진을 하나도 올리지 못했어요.'); $('#bulkStop').textContent = '닫기'; return; }
+
+  // ② 같은 관람끼리 묶기
+  step('AI가 같은 전시·같은 영화끼리 묶는 중…');
+  let groups;
+  let aiNote = '';
+  try {
+    ({ groups } = await api('/api/group', { method: 'POST', body: { photos: ok.map((p) => ({ data: p.thumb, date: p.date, blob: p.smallBlob })) } }));
+  } catch (err) {
+    groups = groupByDay(ok);
+    aiNote = `AI로 묶지 못해서 찍은 날짜끼리 묶었어요 (${err.message})`;
+  }
+  if (stop) { ok.forEach((p) => api(`/api/images/${p.key}`, { method: 'DELETE' }).catch(() => {})); return; }
+
+  // ③ 묶음마다 저장
+  const rows = groups.map((g) => ({ g, state: 'wait', text: '' }));
   const draw = () => {
     const list = $('#bulkList');
     if (!list) return;
     list.innerHTML = rows.map((r) => `<li class="bulk-row ${r.state}">
-      <img src="${r.url}" alt="" />
-      <div class="bulk-main"><strong>${esc(r.title || r.file.name)}</strong><span>${esc(r.text)}</span></div>
+      <img src="${ok[r.g.photos[0]].url}" alt="" />
+      <div class="bulk-main"><strong>${esc(r.g.title || '제목 없음')} <em>${r.g.photos.length}장</em></strong><span>${esc(r.text || [catLabel(r.g.category), r.g.artist, r.g.place].filter(Boolean).join(' · '))}</span></div>
       ${r.state === 'work' ? '<i class="spin"></i>' : ''}
     </li>`).join('');
   };
+  step(`${groups.length}개 항목으로 묶었어요. 저장하는 중…`);
   draw();
-  $('#bulkStop').onclick = () => { stop = true; closeSheet(); };
-
-  const counts = { exhibition: 0, movie: 0, etc: 0 };
-  let failed = 0;
+  let added = 0; let merged = 0; let failed = 0;
   for (const r of rows) {
     if (stop) break;
-    r.state = 'work'; r.text = '사진 올리는 중'; draw();
-    let key = null;
+    r.state = 'work'; draw();
+    const g = r.g;
+    const keys = g.photos.map((i) => ok[i].key);
     try {
-      const blob = await resizeImage(r.file);
-      ({ key } = await api('/api/images', { method: 'POST', raw: blob, type: blob.type }));
-      r.text = 'AI가 보는 중'; draw();
-      let s = { category: 'etc', title: '', artist: '', place: '', tags: [], memo: '' };
-      try {
-        ({ suggestion: s } = await api('/api/analyze', { method: 'POST', body: { image: key } }));
-      } catch (err) {
-        r.note = `AI 분석 실패: ${err.message}`;
+      const same = findSameViewing(g);
+      if (same) {
+        // 같은 관람 항목이 이미 있으면 사진과 태그만 더합니다. (이미 적어 둔 글은 그대로)
+        const body = {
+          ...same,
+          images: [...same.images, ...keys].slice(0, 20),
+          tags: [...new Set([...same.tags, ...(g.tags || [])])].slice(0, 30),
+          artist: same.artist || g.artist, place: same.place || g.place,
+        };
+        const { item } = await api(`/api/items/${same.id}`, { method: 'PUT', body });
+        state.items = state.items.map((x) => (x.id === same.id ? item : x));
+        r.text = `이미 있던 항목에 ${keys.length}장 더함`;
+        merged++;
+      } else {
+        const body = { category: g.category, title: g.title || (ok[g.photos[0]].file.name.replace(/\.[^.]+$/, '')), artist: g.artist, place: g.place, memo: g.memo, tags: g.tags, images: keys, source: '' };
+        const { item } = await api('/api/items', { method: 'POST', body });
+        state.items.unshift(item);
+        g.artist = item.artist;
+        r.text = '';
+        added++;
       }
-      if (stop) { api(`/api/images/${key}`, { method: 'DELETE' }).catch(() => {}); break; }
-      const body = {
-        category: s.category, title: s.title || r.file.name.replace(/\.[^.]+$/, ''), artist: s.artist,
-        place: s.place, memo: s.memo, tags: s.tags, images: [key], source: '',
-      };
-      const { item } = await api('/api/items', { method: 'POST', body });
-      state.items.unshift(item);
-      counts[item.category]++;
       r.state = 'done';
-      r.title = item.title;
-      r.text = r.note || [catLabel(item.category), item.artist, item.place].filter(Boolean).join(' · ');
     } catch (err) {
       failed++;
       r.state = 'fail';
       r.text = err.message || '저장하지 못했어요';
-      if (key) api(`/api/images/${key}`, { method: 'DELETE' }).catch(() => {});
+      keys.forEach((k) => api(`/api/images/${k}`, { method: 'DELETE' }).catch(() => {}));
     }
     draw();
     renderAll();
   }
   await refreshArtists().catch(() => {});
-  const sum = CATS.map(([k, l]) => (counts[k] ? `${l} ${counts[k]}` : '')).filter(Boolean).join(' · ');
-  const msg = `${sum || '저장한 것 없음'}${failed ? ` · 실패 ${failed}` : ''}`;
-  if ($('#bulkSum')) {
-    $('#bulkSum').textContent = `다 됐어요: ${msg}. 틀린 건 카드를 눌러 고쳐 주세요.`;
-    $('#bulkStop').textContent = '닫기';
-  }
-  toast(`나눠서 저장했어요 (${msg})`);
+  const msg = [added && `새 항목 ${added}개`, merged && `기존 항목에 더함 ${merged}개`, failed && `실패 ${failed}개`].filter(Boolean).join(' · ') || '저장한 것 없음';
+  step(`다 됐어요: 사진 ${ok.length}장 → ${msg}`);
+  if ($('#bulkSum')) $('#bulkSum').textContent = (aiNote ? `${aiNote}. ` : '') + '잘못 묶였으면 항목을 눌러 사진을 빼거나 고쳐 주세요.';
+  if ($('#bulkStop')) $('#bulkStop').textContent = '닫기';
+  toast(`정리했어요 (${msg})`);
 }
 
 function cleanupDraft(draft) {

@@ -11,6 +11,7 @@
  *   DELETE /api/images/:key               로그인. 올렸다가 취소한 사진 지우기
  *   GET    /img/:key                      공개. 사진 보기
  *   POST   /api/analyze  { image }        로그인. 사진을 보고 분류·제목·작가·태그 추천 (Gemini)
+ *   POST   /api/group    { photos }       로그인. 여러 장을 같이 보고 같은 관람(같은 전시·영화)끼리 묶기
  *   GET    /api/artists                   공개. 작가 목록 + 설명
  *   PUT    /api/artists/:name             로그인. 작가 설명 직접 고치기
  *   POST   /api/artists/:name/ai          로그인. 구글 Gemini 로 작가 설명 만들기
@@ -89,6 +90,10 @@ async function route(request, env, parts) {
     if (!id && m === 'POST') return (await requireLogin(request, env)) || uploadImage(request, env);
     if (id && !sub && m === 'DELETE') return (await requireLogin(request, env)) || deleteImage(env, id);
     return methodNotAllowed();
+  }
+
+  if (head === 'group' && !id) {
+    return m === 'POST' ? (await requireLogin(request, env)) || groupPhotos(request, env) : methodNotAllowed();
   }
 
   if (head === 'analyze' && !id) {
@@ -396,7 +401,7 @@ function analyzePrompt(existing) {
     '이 사진은 사용자가 아이디어 아카이브에 모으는 레퍼런스입니다. 사진을 보고 아래를 JSON 하나로만 답하세요.',
     '',
     '- category: "exhibition"(전시·미술관·갤러리·설치작품·작품 사진·전시 포스터), "movie"(영화 장면·스틸컷·영화 포스터·드라마), "etc"(그 외 전부) 중 하나',
-    '- title: 사진을 알아볼 수 있는 짧은 한국어 제목 (작품명·영화 제목을 알면 그것, 모르면 무엇이 보이는지)',
+    '- title: 전시면 전시 이름(전시명), 영화면 영화 제목. 알 수 없으면 무엇이 보이는지 짧은 한국어 제목. 개별 작품 이름은 memo 에',
     '- artist: 작가·감독·디자이너 이름. 확실할 때만 쓰고, 모르면 빈 문자열 ""',
     '- place: 전시관·미술관·갤러리 이름(전시일 때), 사진에 글자로 보이거나 확실할 때만. 모르면 ""',
     '- tags: 한국어 태그 2~5개 (예: 조명, 색감, 공간, 타이포그래피)',
@@ -486,6 +491,99 @@ async function analyzeImage(request, env) {
     if (res.status === 429 || (res.status === 400 && /API key/i.test(res.error))) break;
   }
   return json({ error: `사진을 분석하지 못했습니다. ${lastError}`.trim() }, 502);
+}
+
+// 여러 장을 한 번에 보여주고 "같은 관람"끼리 묶어 달라고 합니다. (작은 미리보기 사진으로 보냄)
+const GROUP_MAX = 30;
+
+function groupPrompt(existing, dates) {
+  return [
+    `사용자가 사진 ${dates.length}장을 한꺼번에 아이디어 아카이브에 넣으려고 합니다. 사진 번호는 첨부 순서대로 0부터입니다.`,
+    dates.some(Boolean) ? `사진 찍은 날짜(모르면 빈칸): ${dates.map((d, i) => `${i}=${d || '?'}`).join(', ')}` : '',
+    '',
+    '같은 관람(같은 전시를 보러 가서 찍은 사진들, 같은 영화의 장면·포스터들)은 하나의 묶음으로 묶으세요.',
+    '- 같은 전시장·같은 전시의 작품·포스터·안내문·공간 사진은 한 묶음입니다. 찍은 날짜가 같고 분위기·공간이 이어지면 같은 관람일 가능성이 큽니다.',
+    '- 서로 다른 전시, 다른 영화, 관계없는 사진은 다른 묶음입니다. 확실하지 않으면 나누세요.',
+    '',
+    '각 묶음마다:',
+    '- photos: 그 묶음에 들어가는 사진 번호 배열 (모든 사진이 정확히 한 묶음에만 들어가야 함)',
+    '- category: "exhibition"(전시·미술관·갤러리), "movie"(영화·드라마), "etc"(그 외) 중 하나',
+    '- title: 전시면 전시 이름, 영화면 영화 제목. 모르면 무엇을 본 것인지 짧은 한국어 제목',
+    '- artist: 작가·감독 이름. 확실할 때만, 모르면 ""',
+    '- place: 전시관·미술관 이름 (영화는 ""). 사진에 보이거나 확실할 때만, 모르면 ""',
+    '- tags: 한국어 태그 2~5개',
+    '- memo: 눈여겨볼 점, 알아본 작품 이름 등 한두 문장',
+    '',
+    existing.length ? `사용자가 이미 저장한 작가: ${existing.slice(0, 300).join(', ')}` : '',
+    '이미 저장한 작가와 같은 사람이면(표기가 달라도) 목록의 이름을 그대로 쓰세요. 추측하지 마세요.',
+    'JSON 하나로만 답하세요: {"groups":[...]}',
+  ].filter((l) => l !== '').join('\n');
+}
+
+// AI 답을 정리: 빠진 사진은 각각 따로 묶고, 두 번 나온 사진은 처음 묶음에만 둡니다.
+function cleanGroups(raw, count, existing) {
+  const seen = new Set();
+  const groups = [];
+  for (const g of Array.isArray(raw?.groups) ? raw.groups : []) {
+    const photos = (Array.isArray(g?.photos) ? g.photos : []).map(Number)
+      .filter((n) => Number.isInteger(n) && n >= 0 && n < count && !seen.has(n));
+    photos.forEach((n) => seen.add(n));
+    if (photos.length) groups.push({ photos, ...cleanAnalysis(g, existing) });
+  }
+  for (let i = 0; i < count; i++) {
+    if (!seen.has(i)) groups.push({ photos: [i], category: 'etc', title: '', artist: '', place: '', tags: [], memo: '' });
+  }
+  return groups;
+}
+
+async function groupPhotos(request, env) {
+  if (!env.GEMINI_API_KEY) return json({ error: '구글 AI 키(GEMINI_API_KEY)가 설정되지 않았습니다.' }, 503);
+  const body = await readJson(request);
+  const photos = Array.isArray(body?.photos) ? body.photos.slice(0, GROUP_MAX) : [];
+  if (!photos.length) return json({ error: '사진이 없습니다.' }, 400);
+  const dates = photos.map((p) => String(p?.date || '').slice(0, 16));
+  const parts = [];
+  for (const p of photos) {
+    const data = String(p?.data || '');
+    if (!data || data.length > 1_500_000) return json({ error: '미리보기 사진이 너무 큽니다.' }, 413);
+    parts.push({ inlineData: { mimeType: 'image/jpeg', data } });
+  }
+  const { results } = await env.DB.prepare("SELECT artist, COUNT(*) AS n FROM items WHERE artist != '' GROUP BY artist ORDER BY n DESC").all();
+  const existing = results.map((r) => r.artist);
+  parts.unshift({ text: groupPrompt(existing, dates) });
+
+  const groupItem = {
+    type: 'OBJECT',
+    properties: {
+      photos: { type: 'ARRAY', items: { type: 'INTEGER' } },
+      category: { type: 'STRING', enum: CATEGORIES },
+      title: { type: 'STRING' }, artist: { type: 'STRING' }, place: { type: 'STRING' },
+      tags: { type: 'ARRAY', items: { type: 'STRING' } }, memo: { type: 'STRING' },
+    },
+    required: ['photos', 'category', 'title'],
+  };
+  const schema = { type: 'OBJECT', properties: { groups: { type: 'ARRAY', items: groupItem } }, required: ['groups'] };
+  const model = env.GEMINI_MODEL || DEFAULT_MODEL;
+  const attempts = [
+    { model, schema: true },
+    { model, schema: false },
+    ...(model !== FALLBACK_MODEL ? [{ model: FALLBACK_MODEL, schema: false }] : []),
+  ];
+  let lastError = '';
+  for (const a of attempts) {
+    const generationConfig = { responseMimeType: 'application/json' };
+    if (a.schema) generationConfig.responseSchema = schema;
+    const res = await geminiRequest(env.GEMINI_API_KEY, a.model, { contents: [{ role: 'user', parts }], generationConfig });
+    if (res.text) {
+      const parsed = parseJsonLoose(res.text);
+      if (parsed) return json({ groups: cleanGroups(parsed, photos.length, existing), model: a.model });
+      lastError = 'AI 답을 읽지 못했습니다.';
+      continue;
+    }
+    lastError = res.error;
+    if (res.status === 429 || (res.status === 400 && /API key/i.test(res.error))) break;
+  }
+  return json({ error: `사진을 묶지 못했습니다. ${lastError}`.trim() }, 502);
 }
 
 async function geminiRequest(apiKey, model, body) {
