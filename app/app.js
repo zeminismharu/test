@@ -16,6 +16,8 @@ const state = {
   mode: localGet('viewMode') || 'grid',
   artistQ: '',
   stats: null, // AI 사용량 (첫 화면 게임 카드)
+  todo: [], // 가볼 곳
+  todoEditing: false,
 };
 
 // 분류 키맵: 전시관 · 영화 · 그 외 순서. 키보드 1·2·3 (전체 0)
@@ -53,9 +55,10 @@ async function loadStats() {
 
 async function loadAll() {
   try {
-    const [a, b] = await Promise.all([api('/api/items'), api('/api/artists')]);
+    const [a, b, c] = await Promise.all([api('/api/items'), api('/api/artists'), api('/api/todo').catch(() => ({ todo: [] }))]);
     state.items = a.items;
     state.artists = b.artists;
+    state.todo = c.todo || [];
     state.loaded = true;
   } catch (err) {
     state.loaded = true;
@@ -66,6 +69,7 @@ async function loadAll() {
 
 function renderAll() {
   renderHero();
+  if (!$('#view-todo').hidden) renderTodo();
   renderCatTabs();
   renderTagChips();
   renderGrid();
@@ -80,6 +84,7 @@ function currentRoute() {
   const h = decodeURIComponent(location.hash.replace(/^#\/?/, ''));
   if (h.startsWith('artist/')) return { name: 'artist', arg: h.slice(7) };
   if (h === 'artists') return { name: 'artists' };
+  if (h === 'todo') return { name: 'todo' };
   return { name: 'home' };
 }
 
@@ -93,7 +98,10 @@ function route() {
   $('#view-home').hidden = r.name !== 'home';
   $('#view-artists').hidden = r.name !== 'artists';
   $('#view-artist').hidden = r.name !== 'artist';
-  document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === (r.name === 'home' ? 'home' : 'artists')));
+  $('#view-todo').hidden = r.name !== 'todo';
+  const tab = r.name === 'artist' ? 'artists' : r.name;
+  document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === tab));
+  if (r.name === 'todo') renderTodo();
   if (r.name === 'artist') renderArtistPage(r.arg);
   window.scrollTo({ top: 0 });
 }
@@ -102,7 +110,9 @@ window.addEventListener('hashchange', route);
 
 function bindStatic() {
   $('#brand').onclick = () => { resetFilters(); go('#/'); };
-  document.querySelectorAll('.tab').forEach((t) => (t.onclick = () => go(t.dataset.tab === 'home' ? '#/' : '#/artists')));
+  document.querySelectorAll('.tab').forEach((t) => (t.onclick = () => go(t.dataset.tab === 'home' ? '#/' : `#/${t.dataset.tab}`)));
+  $('#todoEdit').onclick = () => { state.todoEditing = !state.todoEditing; renderTodo(); };
+  $('#todoNew').onsubmit = addTodoPlace;
   $('#addBtn').onclick = () => (state.loggedIn ? openAddChoice() : openLogin(() => openAddChoice()));
   $('#loginBtn').onclick = () => (state.loggedIn ? logoutFlow() : openLogin());
   $('#adminBtn').onclick = () => (location.href = '/admin');
@@ -199,6 +209,36 @@ function levelOf(n) {
 
 const num = (n) => Number(n || 0).toLocaleString('ko-KR');
 
+// 방문 횟수 세기: 같은 전시관에 같은 날 올린 항목들은 한 번 다녀온 것으로 칩니다.
+// 전시관 이름이 없는 항목은 그날 다녀온 전시관(가장 많이 올린 곳)에 붙이고, 그날 전시관이 하나도 없으면 그날 하루를 한 번으로 칩니다.
+// (사진을 여러 항목으로 나눠 올려도 방문 횟수가 부풀지 않도록)
+function uniqueVisits(items) {
+  const byDay = new Map();
+  for (const i of items) {
+    const day = fmtDate(i.createdAt);
+    if (!byDay.has(day)) byDay.set(day, []);
+    byDay.get(day).push(i);
+  }
+  const out = [];
+  for (const [day, list] of byDay) {
+    const venues = new Map();
+    const loose = [];
+    for (const i of list) {
+      const k = keyOf(i.place);
+      if (!k) { loose.push(i); continue; }
+      if (!venues.has(k)) venues.set(k, { key: `${k}|${day}`, place: i.place, at: 0, items: [] });
+      venues.get(k).items.push(i);
+    }
+    if (loose.length) {
+      const top = [...venues.values()].sort((a, b) => b.items.length - a.items.length)[0];
+      if (top) top.items.push(...loose);
+      else venues.set('', { key: `?|${day}`, place: '', at: 0, items: loose });
+    }
+    for (const v of venues.values()) { v.at = Math.max(...v.items.map((i) => i.createdAt)); out.push(v); }
+  }
+  return out.sort((a, b) => b.at - a.at);
+}
+
 function energyOf(ai) {
   if (!ai) return null;
   const parts = [];
@@ -211,12 +251,12 @@ function energyOf(ai) {
 function renderHero() {
   const box = $('#hero');
   if (!box) return;
-  const ex = state.items.filter((i) => i.category === 'exhibition');
+  const ex = uniqueVisits(state.items.filter((i) => i.category === 'exhibition'));
   const visits = ex.length;
   const L = levelOf(visits);
   const pct = Math.round(((visits - L.from) / (L.to - L.from)) * 100);
   const now = new Date();
-  const monthVisits = ex.filter((i) => { const d = new Date(i.createdAt); return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth(); }).length;
+  const monthVisits = ex.filter((v) => { const d = new Date(v.at); return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth(); }).length;
   const movies = state.items.filter((i) => i.category === 'movie').length;
   const ai = state.stats?.ai;
   const en = energyOf(ai);
@@ -234,11 +274,12 @@ function renderHero() {
     <div class="hero-top">
       <div class="lv-badge"><small>Lv.</small>${L.lv}</div>
       <div class="hero-title"><span>전시 레벨</span><strong>${esc(L.title)}</strong></div>
-      <div class="hero-visits"><b>${state.loaded ? visits : '-'}</b><small>번 다녀옴</small></div>
+      <button class="hero-visits" id="visitsBtn" type="button"><b>${state.loaded ? visits : '-'}</b><small>번 다녀옴 ›</small></button>
     </div>
     <div class="bar xp" role="progressbar" aria-label="다음 레벨까지" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><i style="width:${pct}%"></i></div>
     <p class="bar-caption">다음 레벨 <b>${esc(L.nextTitle)}</b>까지 전시 ${L.to - visits}번</p>
     <div class="hero-chips">
+      ${state.todo.length ? `<button type="button" class="quest-chip" id="questChip">${ICON.pin}가볼 곳 <b>${todoProgress().done}/${state.todo.length}</b></button>` : ''}
       <span>이번 달 전시 <b>${monthVisits}</b></span><span>영화 <b>${movies}</b></span><span>작가 <b>${state.artists.length}</b></span>
     </div>
     <button class="energy" id="energyBtn" type="button">
@@ -247,6 +288,8 @@ function renderHero() {
       <span class="bar-caption">${esc(aiCaption)}</span>
     </button>`;
   $('#energyBtn').onclick = openEnergy;
+  $('#visitsBtn').onclick = openVisits;
+  if ($('#questChip')) $('#questChip').onclick = () => go('#/todo');
 
   // 레벨 업 축하 (지난번 본 레벨보다 오르면 한 번)
   if (state.loaded) {
@@ -257,6 +300,24 @@ function renderHero() {
     }
     localSet('lv', String(L.lv));
   }
+}
+
+// 전시 다녀온 기록: 같은 날·같은 전시관으로 묶인 항목들을 보여줘서 횟수를 확인할 수 있게 합니다.
+function openVisits() {
+  const exItems = state.items.filter((i) => i.category === 'exhibition');
+  const visits = uniqueVisits(exItems);
+  openSheet(`
+    <h2>전시 다녀온 기록 ${visits.length}번</h2>
+    <p class="hint" style="margin:-8px 0 16px;line-height:1.6">전시 항목 ${exItems.length}개를 <b>같은 날 · 같은 전시관</b>끼리 묶어서 한 번으로 셌어요. 전시관 이름이 없는 항목은 그날 다녀온 전시관에 붙였어요.</p>
+    <ul class="visit-list">${visits.map((v) => `<li>
+      <div class="visit-date">${fmtDate(v.at)}</div>
+      <div class="visit-main">
+        <strong>${esc(v.place || '전시관 이름 없음')}</strong>
+        <span>${v.items.map((i) => esc(i.title || '제목 없음')).join(' · ')}</span>
+      </div>
+      <b class="visit-n">${v.items.length}개</b>
+    </li>`).join('')}</ul>
+    <p class="hint" style="margin-top:14px">잘못 묶였으면 그 항목을 열어 전시관 이름을 고쳐 주세요.</p>`);
 }
 
 function openEnergy() {
@@ -300,11 +361,12 @@ function openEnergy() {
 
 const VENUE_STALE = 7 * 24 * 3600 * 1000; // 7일 지나면 새로 찾기
 
-async function openVenue(name) {
-  const mine = state.items.filter((i) => i.place === name).sort((a, b) => b.createdAt - a.createdAt);
+async function openVenue(name, keys = null) {
+  const mine = (keys ? state.items.filter((i) => placeMatches(i.place, keys)) : state.items.filter((i) => i.place === name))
+    .sort((a, b) => b.createdAt - a.createdAt);
   const head = `
     <h2 class="venue-title" id="vTitle">${esc(name)}</h2>
-    <p class="venue-mine">${mine.length ? `내가 다녀온 기록 <b>${mine.length}번</b> · 마지막 ${fmtDate(mine[0].createdAt)}` : '아직 기록이 없어요'}</p>
+    <p class="venue-mine">${mine.length ? `내가 다녀온 기록 <b>${uniqueVisits(mine).length}번</b> · 마지막 ${fmtDate(mine[0].createdAt)}` : '아직 기록이 없어요'}</p>
     <div class="venue-maps">
       <a class="btn small ghost" href="https://map.naver.com/p/search/${encodeURIComponent(name)}" target="_blank" rel="noopener noreferrer">${ICON.pin}네이버 지도</a>
       <a class="btn small ghost" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name)}" target="_blank" rel="noopener noreferrer">${ICON.pin}구글 지도</a>
@@ -372,6 +434,91 @@ async function openVenue(name) {
     show(null);
     toast(err.message);
   }
+}
+
+/* ─────────────── 가볼 곳 (퀘스트) ─────────────── */
+
+// 레퍼런스의 전시관 이름에 가볼 곳의 열쇠 글자가 들어 있으면 다녀온 것으로 칩니다. (리움 → 리움미술관)
+function placeMatches(place, keys) {
+  const p = keyOf(place);
+  return !!p && keys.some((k) => { const kk = keyOf(k); return kk && (p.includes(kk) || kk.includes(p)); });
+}
+// 가볼 곳 하나의 방문 기록 (같은 날 여러 항목이면 1번)
+const visitsOf = (t) => uniqueVisits(state.items.filter((i) => placeMatches(i.place, t.keys?.length ? t.keys : [t.name])));
+const venueQuery = (name) => name.replace(/\s*\(.*\)\s*$/, '');
+
+function todoProgress() {
+  const done = state.todo.filter((t) => t.done || visitsOf(t).length).length;
+  return { done, total: state.todo.length };
+}
+
+function renderTodo() {
+  const { done, total } = todoProgress();
+  $('#todoSum').innerHTML = total ? `${total}곳 중 <b>${done}곳</b> 다녀왔어요${done === total ? ' · 퀘스트 완료!' : ''}` : '아직 가볼 곳이 없어요';
+  $('#todoBar').style.width = `${total ? Math.round((done / total) * 100) : 0}%`;
+  $('#todoEdit').textContent = state.todoEditing ? '완료' : '편집';
+  const areas = [...new Set(state.todo.map((t) => t.area || '기타'))];
+  $('#todoAreas').innerHTML = areas.map((a) => `<option value="${esc(a)}"></option>`).join('');
+  $('#todoGroups').innerHTML = areas.map((area) => {
+    const list = state.todo.filter((t) => (t.area || '기타') === area);
+    const n = list.filter((t) => t.done || visitsOf(t).length).length;
+    return `<section class="quest-group">
+      <h3 class="quest-area">${esc(area)} <span>${n}/${list.length}</span></h3>
+      <ul class="quest-list">${list.map((t) => {
+        const v = visitsOf(t);
+        const ok = v.length || t.done;
+        return `<li class="${ok ? 'ok' : ''}">
+          <button class="quest-check" data-id="${t.id}" type="button" aria-label="${ok ? '다녀옴' : '아직'}" ${v.length ? 'disabled' : ''}>${ok ? '<svg viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></svg>' : ''}</button>
+          <button class="quest-main" data-id="${t.id}" type="button">
+            <strong>${esc(t.name)}</strong>
+            <span>${v.length ? `다녀옴 ${v.length}번 · 마지막 ${fmtDate(Math.max(...v.map((x) => x.at)))}` : t.done ? '다녀옴 (직접 표시)' : '운영시간 · 지금 하는 전시 보기'}</span>
+          </button>
+          ${state.todoEditing ? `<button class="quest-del" data-id="${t.id}" type="button" aria-label="빼기">${ICON.x}</button>` : ICON.chevron}
+        </li>`;
+      }).join('')}</ul>
+    </section>`;
+  }).join('');
+  const find = (el) => state.todo.find((t) => t.id === el.dataset.id);
+  $('#todoGroups').querySelectorAll('.quest-main').forEach((b) => (b.onclick = () => { const t = find(b); openVenue(venueQuery(t.name), t.keys?.length ? t.keys : [t.name]); }));
+  $('#todoGroups').querySelectorAll('.quest-check').forEach((b) => (b.onclick = () => needLogin(() => toggleTodo(find(b)))));
+  $('#todoGroups').querySelectorAll('.quest-del').forEach((b) => (b.onclick = () => needLogin(() => removeTodo(find(b)))));
+}
+
+const needLogin = (fn) => (state.loggedIn ? fn() : openLogin(fn));
+
+async function toggleTodo(t) {
+  try {
+    const { place } = await api(`/api/todo/${t.id}`, { method: 'PUT', body: { done: !t.done } });
+    state.todo = state.todo.map((x) => (x.id === t.id ? place : x));
+    renderTodo();
+    renderHero();
+    if (place.done) toast(`${place.name} 다녀옴!`);
+  } catch (err) { toast(err.message); }
+}
+
+async function removeTodo(t) {
+  try {
+    await api(`/api/todo/${t.id}`, { method: 'DELETE' });
+    state.todo = state.todo.filter((x) => x.id !== t.id);
+    renderTodo();
+    renderHero();
+  } catch (err) { toast(err.message); }
+}
+
+async function addTodoPlace(e) {
+  e.preventDefault();
+  const name = $('#todoName').value.trim();
+  if (!name) return toast('장소 이름을 적어 주세요');
+  needLogin(async () => {
+    try {
+      const { place } = await api('/api/todo', { method: 'POST', body: { name, area: $('#todoArea').value.trim() } });
+      state.todo.push(place);
+      $('#todoName').value = '';
+      renderTodo();
+      renderHero();
+      toast('가볼 곳에 더했어요');
+    } catch (err) { toast(err.message); }
+  });
 }
 
 function setCat(c) {

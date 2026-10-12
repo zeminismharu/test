@@ -13,6 +13,10 @@
  *   POST   /api/analyze  { image }        로그인. 사진을 보고 분류·제목·작가·태그 추천 (Gemini)
  *   GET    /api/venues/:name              공개. 저장해 둔 전시관 정보 (주소·운영시간·휴관일·지금 하는 전시)
  *   POST   /api/venues/:name/refresh      로그인. 구글 검색으로 전시관 정보를 새로 찾기 (Gemini)
+ *   GET    /api/todo                      공개. 가볼 곳 목록 (처음 한 번은 사장님이 준 목록으로 채움)
+ *   POST   /api/todo  { name, area }      로그인. 가볼 곳 추가
+ *   PUT    /api/todo/:id { done }         로그인. 직접 '다녀옴' 표시
+ *   DELETE /api/todo/:id                  로그인. 빼기
  *   GET    /api/stats                     공개. 오늘·이번 달 AI 사용량과 하루 한도 (첫 화면 게임 카드)
  *   PUT    /api/settings                  로그인. { aiDailyTokens, aiDailyRequests } 하루 한도 정하기
  *   POST   /api/group    { photos }       로그인. 여러 장을 같이 보고 같은 관람(같은 전시·영화)끼리 묶기
@@ -102,6 +106,15 @@ async function route(request, env, parts) {
     return methodNotAllowed();
   }
 
+  if (head === 'todo') {
+    if (sub) return notFound();
+    if (!id && m === 'GET') return listTodo(env);
+    if (!id && m === 'POST') return (await requireLogin(request, env)) || addTodo(request, env);
+    if (id && m === 'PUT') return (await requireLogin(request, env)) || updateTodo(request, env, id);
+    if (id && m === 'DELETE') return (await requireLogin(request, env)) || deleteTodo(env, id);
+    return methodNotAllowed();
+  }
+
   if (head === 'stats' && !id) return m === 'GET' ? getStats(env) : methodNotAllowed();
   if (head === 'settings' && !id) {
     return m === 'PUT' ? (await requireLogin(request, env)) || saveSettings(request, env) : methodNotAllowed();
@@ -170,6 +183,15 @@ async function ensureSchema(env) {
       info TEXT NOT NULL DEFAULT '{}',
       sources TEXT NOT NULL DEFAULT '[]',
       updated_at INTEGER NOT NULL
+    )`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS todo_places (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      area TEXT NOT NULL DEFAULT '',
+      keys TEXT NOT NULL DEFAULT '[]',
+      done INTEGER NOT NULL DEFAULT 0,
+      sort INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL
     )`),
     env.DB.prepare('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)'),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS boards (
@@ -654,6 +676,73 @@ async function geminiFetch(env, model, body) {
     return { error: res.status === 429 ? '구글 AI 사용량 한도에 걸렸습니다. 잠시 뒤 다시 해 주세요.' : msg, status: res.status };
   }
   return { data, res };
+}
+
+/* ─────────────── 가볼 곳 (퀘스트) ─────────────── */
+
+// 2026-10-12 사장님이 사진으로 준 목록. 처음 한 번만 넣고, 그 뒤로는 화면에서 더하고 뺍니다.
+// keys: 레퍼런스의 전시관 이름에 이 글자가 들어 있으면 '다녀옴'으로 칩니다.
+const TODO_SEED = [
+  ['3호선 안국역 근처', '금호미술관', ['금호미술관']],
+  ['3호선 안국역 근처', '갤러리현대', ['갤러리현대', '현대갤러리']],
+  ['3호선 안국역 근처', '학고재', ['학고재']],
+  ['3호선 안국역 근처', '국제갤러리', ['국제갤러리']],
+  ['3호선 안국역 근처', '아트선재센터', ['아트선재']],
+  ['3호선 안국역 근처', 'PKM갤러리', ['pkm']],
+  ['서울', '일민미술관', ['일민']],
+  ['서울', '리움미술관', ['리움']],
+  ['서울', '송은', ['송은']],
+  ['서울', '아모레퍼시픽미술관', ['아모레퍼시픽']],
+  ['서울', '성곡미술관', ['성곡']],
+  ['평창동', '가나아트센터', ['가나아트']],
+  ['평창동', '토탈미술관', ['토탈미술관']],
+  ['평창동', '김종영미술관', ['김종영']],
+  ['경기·강원', '국립현대미술관 과천', ['국립현대미술관과천', '과천국립현대미술관', 'mmca과천']],
+  ['경기·강원', '백남준아트센터 (용인)', ['백남준아트센터']],
+  ['경기·강원', '뮤지엄 산 (원주)', ['뮤지엄산', 'museumsan']],
+];
+
+function todoRow(r) {
+  return { id: r.id, name: r.name, area: r.area, keys: safeParse(r.keys, []), done: !!r.done, sort: r.sort, createdAt: r.created_at };
+}
+
+async function listTodo(env) {
+  const st = await getSettings(env);
+  if (!st.todoSeeded) {
+    const now = Date.now();
+    await env.DB.batch([
+      ...TODO_SEED.map(([area, name, keys], i) => env.DB.prepare('INSERT INTO todo_places (id, name, area, keys, done, sort, created_at) VALUES (?, ?, ?, ?, 0, ?, ?)')
+        .bind(crypto.randomUUID(), name, area, JSON.stringify(keys), i, now)),
+      env.DB.prepare("INSERT INTO settings (key, value) VALUES ('todoSeeded', '1') ON CONFLICT(key) DO UPDATE SET value = '1'"),
+    ]);
+  }
+  const { results } = await env.DB.prepare('SELECT * FROM todo_places ORDER BY sort, created_at').all();
+  return json({ todo: results.map(todoRow) });
+}
+
+async function addTodo(request, env) {
+  const body = await readJson(request);
+  const name = String(body?.name ?? '').trim().slice(0, LIMITS.place);
+  const area = String(body?.area ?? '').trim().slice(0, 40);
+  if (!name) return json({ error: '장소 이름을 적어 주세요.' }, 400);
+  const id = crypto.randomUUID();
+  const max = await env.DB.prepare('SELECT COALESCE(MAX(sort), 0) AS m FROM todo_places').first();
+  await env.DB.prepare('INSERT INTO todo_places (id, name, area, keys, done, sort, created_at) VALUES (?, ?, ?, ?, 0, ?, ?)')
+    .bind(id, name, area, JSON.stringify([name]), (max?.m || 0) + 1, Date.now()).run();
+  const r = await env.DB.prepare('SELECT * FROM todo_places WHERE id = ?').bind(id).first();
+  return json({ place: todoRow(r) }, 201);
+}
+
+async function updateTodo(request, env, id) {
+  const body = await readJson(request);
+  await env.DB.prepare('UPDATE todo_places SET done = ? WHERE id = ?').bind(body?.done ? 1 : 0, id).run();
+  const r = await env.DB.prepare('SELECT * FROM todo_places WHERE id = ?').bind(id).first();
+  return r ? json({ place: todoRow(r) }) : notFound();
+}
+
+async function deleteTodo(env, id) {
+  await env.DB.prepare('DELETE FROM todo_places WHERE id = ?').bind(id).run();
+  return json({ ok: true });
 }
 
 /* ─────────────── 전시관 정보 (팝업) ─────────────── */

@@ -309,6 +309,34 @@ export async function api(path, { method = 'GET', body, raw } = {}) {
     }
   }
 
+  if (head === 'todo') {
+    const col = db.collection('todo');
+    const row = (d) => ({ id: d.id, ...d.data(), done: !!d.data().done });
+    if (!id && m === 'GET') {
+      const snap = await col.orderBy('sort').limit(500).get().catch(dbError);
+      return { todo: snap.docs.filter((d) => d.exists).map(row) };
+    }
+    if (!id && m === 'POST') {
+      const name = str(body?.name, LIMITS.place);
+      if (!name) fail('장소 이름을 적어 주세요.');
+      const snap = await col.limit(500).get().catch(dbError);
+      const sort = Math.max(0, ...snap.docs.map((d) => Number(d.data().sort) || 0)) + 1;
+      const ref = col.doc();
+      const doc = { name, area: str(body?.area, 40), keys: [name], done: false, sort, createdAt: Date.now() };
+      await ref.set(doc).catch(dbError);
+      return { place: { id: ref.id, ...doc } };
+    }
+    const ref = col.doc(id);
+    if (m === 'PUT') {
+      const cur = await ref.get().catch(dbError);
+      if (!cur.exists) fail('찾을 수 없습니다.', 404);
+      const doc = { ...cur.data(), done: !!body?.done };
+      await ref.set(doc).catch(dbError);
+      return { place: { id, ...doc } };
+    }
+    if (m === 'DELETE') { await ref.delete().catch(dbError); return { ok: true }; }
+  }
+
   if (head === 'stats' || head === 'settings') {
     const setRef = db.collection('meta').doc('settings');
     if (head === 'settings' && m === 'PUT') {

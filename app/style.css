@@ -500,3 +500,42 @@ textarea.field { min-height: 120px; line-height: 1.6; }
 .vex p { margin: 6px 0 0; color: var(--text-2); font-size: 14px; }
 .vnotes { margin: 16px 0 0; padding: 12px 14px; border-radius: 12px; background: var(--bg-2); color: var(--text-2); font-size: 14px; }
 .venue-foot { margin: 16px 0 12px; color: var(--text-3); font-size: 13px; line-height: 1.6; }
+
+/* ── 가볼 곳 (퀘스트) ── */
+.quest-head { background: var(--hero-bg); color: var(--hero-fg); border-radius: 24px; padding: 20px; margin: 4px 0 8px; display: flex; flex-direction: column; gap: 10px; }
+.quest-top { display: flex; align-items: center; justify-content: space-between; }
+.quest-title { margin: 0; font-size: 24px; font-weight: 800; letter-spacing: -0.03em; }
+.quest-head .text-btn { color: var(--hero-sub); }
+.quest-sub { margin: 0; color: var(--hero-sub); font-weight: 600; }
+.quest-sub b { color: var(--hero-fg); font-size: 18px; }
+.quest-bar { height: 14px; }
+.quest-bar i { background: var(--green); }
+.quest-group { margin-top: 22px; }
+.quest-area { display: flex; align-items: baseline; gap: 6px; font-size: 18px; font-weight: 800; margin: 0 0 8px; }
+.quest-area span { font-size: 14px; color: var(--blue); }
+.quest-list { list-style: none; margin: 0; padding: 0; }
+.quest-list li { display: flex; align-items: center; gap: 12px; padding: 8px 4px; border-bottom: 1px solid var(--line); color: var(--text-3); }
+.quest-list li > svg { width: 18px; height: 18px; flex: none; }
+.quest-check { flex: none; width: 28px; height: 28px; border-radius: 9px; border: 2px solid var(--line); display: grid; place-items: center; color: #fff; }
+.quest-check svg { width: 18px; height: 18px; stroke-width: 3; }
+.quest-list li.ok .quest-check { background: var(--green); border-color: var(--green); }
+.quest-check:disabled { cursor: default; }
+.quest-main { flex: 1; min-width: 0; text-align: left; display: flex; flex-direction: column; padding: 6px 0; }
+.quest-main strong { font-size: 17px; color: var(--text); }
+.quest-main span { font-size: 13px; font-weight: 600; color: var(--text-3); }
+.quest-list li.ok .quest-main span { color: var(--green); }
+.quest-del { flex: none; width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; color: var(--red); background: var(--danger-bg, #ffeeee); }
+.quest-del svg { width: 16px; height: 16px; }
+.todo-new { display: flex; flex-direction: column; gap: 8px; }
+.quest-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 600; color: var(--hero-fg); background: var(--green); padding: 5px 10px; border-radius: 999px; }
+.quest-chip svg { width: 14px; height: 14px; }
+.quest-chip b { font-variant-numeric: tabular-nums; }
+.hero-visits:active { opacity: .8; }
+.hero-visits { color: inherit; }
+.visit-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.visit-list li { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; background: var(--bg-2); }
+.visit-date { flex: none; font-size: 13px; font-weight: 700; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.visit-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.visit-main strong { font-size: 16px; }
+.visit-main span { font-size: 13px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.visit-n { flex: none; font-size: 13px; color: var(--blue); }

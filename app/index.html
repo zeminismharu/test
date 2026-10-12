@@ -61,6 +61,26 @@
       <div class="empty" id="artistEmpty" hidden></div>
     </section>
 
+    <!-- 가볼 곳 (퀘스트) -->
+    <section id="view-todo" class="view" hidden>
+      <div class="quest-head">
+        <div class="quest-top">
+          <h2 class="quest-title">가볼 곳</h2>
+          <button class="text-btn small" id="todoEdit" type="button">편집</button>
+        </div>
+        <p class="quest-sub" id="todoSum"></p>
+        <span class="bar quest-bar"><i id="todoBar" style="width:0%"></i></span>
+      </div>
+      <div id="todoGroups"></div>
+      <form class="todo-new" id="todoNew" autocomplete="off">
+        <h3 class="section-title" style="margin:28px 0 10px">가볼 곳 더하기</h3>
+        <input class="field" id="todoName" maxlength="100" placeholder="장소 이름 (예: 서울시립미술관)" />
+        <input class="field" id="todoArea" maxlength="40" list="todoAreas" placeholder="지역 (예: 서울)" />
+        <datalist id="todoAreas"></datalist>
+        <button class="btn block" type="submit">더하기</button>
+      </form>
+    </section>
+
     <!-- 작가 한 명 -->
     <section id="view-artist" class="view" hidden>
       <button class="back" id="artistBack" type="button"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>작가 목록</button>
@@ -105,6 +125,10 @@
     <button class="tab" data-tab="artists" type="button">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg>
       <span>작가별</span>
+    </button>
+    <button class="tab" data-tab="todo" type="button">
+      <svg viewBox="0 0 24 24"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>
+      <span>가볼 곳</span>
     </button>
   </nav>
 
