@@ -655,3 +655,15 @@ textarea.field { min-height: 120px; line-height: 1.6; }
 .auto-card strong svg { width: 16px; height: 16px; }
 .auto-card p { margin: 2px 0 0; font-size: 13px; color: var(--text-2); }
 .auto-card .btn { flex: none; white-space: nowrap; }
+
+/* ── 작가 키맵 ── */
+.artist-keys { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; margin: -4px -4px 12px; padding: 2px 4px; }
+.artist-keys::-webkit-scrollbar { display: none; }
+.artist-key { flex: none; width: 68px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 4px 0; color: var(--text); position: relative; }
+.ak-face { width: 56px; height: 56px; border-radius: 50%; overflow: hidden; display: flex; align-items: center; justify-content: center; background: var(--blue-soft); color: var(--blue); font-size: 20px; font-weight: 800; box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px transparent; transition: box-shadow .15s; }
+.ak-face img { width: 100%; height: 100%; object-fit: cover; }
+.artist-key.on .ak-face { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--blue); }
+.artist-key.on .ak-name { color: var(--blue); }
+.ak-name { font-size: 12px; font-weight: 700; max-width: 66px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ak-n { position: absolute; top: 2px; right: 4px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--text); color: var(--bg); font-size: 11px; font-weight: 800; line-height: 18px; text-align: center; }
+.artist-key.more .ak-face { background: var(--bg-2); color: var(--text-2); font-size: 26px; }

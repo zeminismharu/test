@@ -1028,6 +1028,7 @@ function renderVenueRow() {
 
 function renderCatTabs() {
   renderVenueRow();
+  renderArtistKeys();
   const box = $('#catTabs');
   const n = (c) => state.items.filter((it) => !c || it.category === c).length;
   box.innerHTML = [['', '전체'], ...CATS].map(([k, label], i) =>
@@ -1058,7 +1059,31 @@ function renderTagChips() {
   }));
 }
 
+// 작가 키맵: 분류 탭 아래 작가 단추 줄. 누르면 그 작가만, 한 번 더 누르면 해제. 대표작 그림(없으면 내 사진)을 얼굴로.
+function renderArtistKeys() {
+  const row = $('#artistKeys');
+  if (!row) return;
+  const count = new Map();
+  state.items.filter((i) => i.artist && (!state.cat || i.category === state.cat)).forEach((i) => count.set(i.artist, (count.get(i.artist) || 0) + 1));
+  if (state.artist && !count.has(state.artist)) count.set(state.artist, 0);
+  row.hidden = !count.size;
+  const names = [...count.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'ko'));
+  row.innerHTML = names.map(([n, c]) => `
+    <button type="button" class="artist-key ${state.artist === n ? 'on' : ''}" data-v="${esc(n)}" role="tab" aria-selected="${state.artist === n}">
+      <span class="ak-face">${artistThumb(n)}</span>
+      <span class="ak-name">${esc(n)}</span><span class="ak-n">${c}</span>
+    </button>`).join('') +
+    (state.artist ? `<button type="button" class="artist-key more" id="akOpen"><span class="ak-face">›</span><span class="ak-name">작가 보기</span></button>` : '');
+  row.querySelectorAll('.artist-key[data-v]').forEach((b) => (b.onclick = () => {
+    state.artist = state.artist === b.dataset.v ? '' : b.dataset.v;
+    renderFilterLabels();
+    renderGrid();
+  }));
+  if ($('#akOpen')) $('#akOpen').onclick = () => go(`#/artist/${encodeURIComponent(state.artist)}`);
+}
+
 function renderFilterLabels() {
+  renderArtistKeys();
   $('#artistFilterLabel').textContent = state.artist || '모든 작가';
   $('#artistFilterBtn').classList.toggle('on', !!state.artist);
   $('#sortLabel').textContent = SORTS[state.sort];

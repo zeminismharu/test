@@ -10,6 +10,10 @@ on:
         description: 'list 또는 apply'
         required: true
         default: 'list'
+      only:
+        description: '이 작가만 (쉼표로, 비우면 전부)'
+        required: false
+        default: ''
 
 jobs:
   run:
@@ -20,4 +24,5 @@ jobs:
         env:
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
           MODE: ${{ github.event.inputs.mode }}
+          ONLY: ${{ github.event.inputs.only }}
         run: node scripts/artist-works.mjs

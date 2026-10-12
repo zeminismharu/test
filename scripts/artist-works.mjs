@@ -22,7 +22,9 @@ async function candidates(page) {
     if (!src || /^data:|\.svg|\.gif|logo|icon|sprite|banner|blank|spacer|avatar|profile|btn_|button/i.test(src)) continue;
     const alt = (tag.match(/\salt=["']([^"']*)["']/i) || [])[1] || '';
     const url = abs(src, res.url);
-    if (url && !out.some((o) => o.src === url)) out.push({ src: url, alt: alt.slice(0, 120) });
+    // 그림 바로 뒤에 붙은 글 (작품 이름·연도가 여기 있는 경우가 많음)
+    const near = html.slice(m.index + tag.length, m.index + tag.length + 1500).replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/&[a-z#0-9]+;/gi, ' ').replace(/\s+/g, ' ').trim().slice(0, 110);
+    if (url && !out.some((o) => o.src === url)) out.push({ src: url, alt: alt.slice(0, 120), near });
   }
   // 사진 설명(figcaption)도 같이 보여줌
   const caps = [...html.matchAll(/<figcaption[^>]*>([\s\S]*?)<\/figcaption>/gi)].map((m) => m[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()).filter(Boolean).slice(0, 8);
@@ -38,14 +40,16 @@ async function login() {
 
 if (MODE === 'list') {
   const seen = new Map();
+  const only = (process.env.ONLY || '').split(',').filter(Boolean);
   for (const a of list) for (const w of a.works) {
+    if (only.length && !only.includes(a.artist)) continue;
     console.log(`\n===== ${a.artist} · ${w.titleKo || w.title} (${w.year})`);
     for (const p of w.pages || []) {
       if (!seen.has(p)) seen.set(p, await candidates(p).catch((e) => ({ error: String(e.message || e) })));
       const c = seen.get(p);
       console.log(`--- ${p}`);
       if (c.error) { console.log('   (못 읽음)', c.error); continue; }
-      for (const i of c.items) console.log(`   ${i.alt ? `[${i.alt}] ` : ''}${i.src}`);
+      for (const i of c.items) console.log(`   ${i.alt ? `[${i.alt}] ` : ''}${i.src}${i.near ? `\n        ↳ ${i.near}` : ''}`);
       for (const cap of c.caps) console.log(`   캡션: ${cap}`);
     }
   }
