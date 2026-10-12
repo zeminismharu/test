@@ -307,6 +307,45 @@ function pathD(pts) {
   return d;
 }
 
+/* ─────────────── 펜슬 필압: 세게 누르면 굵게 ─────────────── */
+// 필압이 있는 선(pr = 점마다 0~1)은 굵기가 변하는 '채운 모양'으로 그립니다. 없는 선은 예전처럼 일정한 굵기.
+const prWidth = (v) => 0.3 + 1.4 * Math.max(0, Math.min(1, v)); // 보통(0.5) = 정한 굵기
+let usePressure = (() => { try { return localStorage.getItem('ref:pressure') !== '0'; } catch { return true; } })();
+
+function outlineD(pts, pr, w) {
+  const n = pts.length / 2;
+  const P = (i) => [pts[i * 2], pts[i * 2 + 1]];
+  const R = (i) => (w * prWidth(pr[Math.min(i, pr.length - 1)] ?? 0.5)) / 2;
+  const f = (v) => v.toFixed(1);
+  if (n === 1 || (n === 2 && pts[0] === pts[2] && pts[1] === pts[3])) {
+    const [x, y] = P(0); const r = R(0);
+    return `M${f(x - r)} ${f(y)}a${f(r)} ${f(r)} 0 1 0 ${f(r * 2)} 0a${f(r)} ${f(r)} 0 1 0 ${f(-r * 2)} 0Z`;
+  }
+  const L = []; const Rt = [];
+  for (let i = 0; i < n; i++) {
+    const [ax, ay] = P(Math.max(0, i - 1)); const [bx, by] = P(Math.min(n - 1, i + 1));
+    let tx = bx - ax; let ty = by - ay;
+    const len = Math.hypot(tx, ty) || 1; tx /= len; ty /= len;
+    const [x, y] = P(i); const r = R(i);
+    L.push([x - ty * r, y + tx * r]); Rt.push([x + ty * r, y - tx * r]);
+  }
+  // 점 사이를 부드러운 곡선으로 (pathD 와 같은 방식)
+  const smooth = (arr) => {
+    let d = '';
+    for (let i = 1; i < arr.length - 1; i++) d += `Q${f(arr[i][0])} ${f(arr[i][1])} ${f((arr[i][0] + arr[i + 1][0]) / 2)} ${f((arr[i][1] + arr[i + 1][1]) / 2)}`;
+    return d + `L${f(arr[arr.length - 1][0])} ${f(arr[arr.length - 1][1])}`;
+  };
+  const rEnd = R(n - 1); const rStart = R(0);
+  const back = Rt.slice().reverse();
+  return `M${f(L[0][0])} ${f(L[0][1])}${smooth(L)}A${f(rEnd)} ${f(rEnd)} 0 0 1 ${f(back[0][0])} ${f(back[0][1])}${smooth(back)}A${f(rStart)} ${f(rStart)} 0 0 1 ${f(L[0][0])} ${f(L[0][1])}Z`;
+}
+
+function strokeAttrs(s) {
+  return s.pr?.length
+    ? { d: outlineD(s.pts, s.pr, s.w), fill: s.color, stroke: 'none' }
+    : { d: pathD(s.pts), fill: 'none', stroke: s.color, 'stroke-width': s.w, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' };
+}
+
 function renderAll() {
   renderBackground();
   renderStrokes();
@@ -335,10 +374,7 @@ function renderStrokes() {
   const g = $('#layerStrokes');
   g.innerHTML = '';
   for (const s of ed.board.data.strokes) {
-    el('path', {
-      d: pathD(s.pts), fill: 'none', stroke: s.color, 'stroke-width': s.w,
-      'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'data-type': 'stroke', 'data-id': s.id,
-    }, g);
+    el('path', { ...strokeAttrs(s), 'data-type': 'stroke', 'data-id': s.id }, g);
   }
 }
 
@@ -773,9 +809,13 @@ stage.addEventListener('pointerdown', (e) => {
   } else if (tool === 'pen') {
     const u = upp();
     const w = Math.round(ed.width * u * 10) / 10;
-    const path = el('path', { fill: 'none', stroke: ed.color, 'stroke-width': w, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, $('#layerStrokes'));
-    gesture = { kind: 'draw', pts: [p.x, p.y], path, w, u };
-    path.setAttribute('d', pathD([p.x, p.y, p.x, p.y]));
+    const path = el('path', {}, $('#layerStrokes'));
+    // 펜슬이면 필압을 점마다 기록 (마우스·손가락은 일정한 굵기)
+    const pr = usePressure && e.pointerType === 'pen' ? [Math.max(0.05, e.pressure || 0.5)] : null;
+    gesture = { kind: 'draw', pts: [p.x, p.y], path, w, u, pr };
+    const show = () => { for (const [k, v] of Object.entries(strokeAttrs({ pts: gesture.pts.length === 2 ? [p.x, p.y, p.x, p.y] : gesture.pts, pr: gesture.pr, w, color: ed.color }))) path.setAttribute(k, v); };
+    gesture.show = show;
+    show();
   } else if (tool === 'eraser') {
     gesture = { kind: 'erase', erased: false };
     if (!eraseAt(p) && hit && hit.type !== 'stroke') {
@@ -867,7 +907,12 @@ stage.addEventListener('pointermove', (e) => {
     const lx = pts[pts.length - 2]; const ly = pts[pts.length - 1];
     if (Math.hypot(p.x - lx, p.y - ly) < 2 * gesture.u) return;
     pts.push(p.x, p.y);
-    gesture.path.setAttribute('d', pathD(pts));
+    if (gesture.pr) {
+      // 손 떨림처럼 튀지 않게 부드럽게 (앞 값 60% + 새 값 40%)
+      const prev = gesture.pr[gesture.pr.length - 1];
+      gesture.pr.push(prev * 0.6 + Math.max(0.05, e.pressure || prev) * 0.4);
+    }
+    gesture.show();
   } else if (gesture.kind === 'erase') {
     eraseAt(p);
   } else if (gesture.kind === 'move') {
@@ -899,7 +944,13 @@ function endPointer(e) {
     const pts = gesture.pts;
     if (pts.length === 2) pts.push(pts[0], pts[1]);
     remember();
-    ed.board.data.strokes.push({ id: uid(), color: ed.color, w: gesture.w, pts });
+    const st = { id: uid(), color: ed.color, w: gesture.w, pts };
+    if (gesture.pr) {
+      const pr = gesture.pr.map((v) => Math.round(v * 100) / 100);
+      while (pr.length < pts.length / 2) pr.push(pr[pr.length - 1]);
+      st.pr = pr;
+    }
+    ed.board.data.strokes.push(st);
     renderStrokes();
     scheduleSave();
   } else if ((gesture.kind === 'move' && gesture.moved) || (gesture.kind === 'moveStroke' && gesture.moved) || (gesture.kind === 'erase' && gesture.erased)) {
@@ -1018,6 +1069,7 @@ function moreMenu() {
       ${d.bg ? `<li><button data-a="fade">${d.bgOpacity < 1 ? '배경 진하게' : '배경 흐리게'}</button></li><li><button data-a="nobg">배경 빼기</button></li>` : ''}
       <li><button data-a="grid">${d.grid ? '격자 숨기기' : '격자 보이기'}</button></li>
       <li><button data-a="pen">애플 펜슬 모드 <span class="n">${penMode ? '켜짐 · 끄기' : '꺼짐 · 켜기'}</span></button></li>
+      <li><button data-a="pressure">펜슬 필압 (세게 누르면 굵게) <span class="n">${usePressure ? '켜짐 · 끄기' : '꺼짐 · 켜기'}</span></button></li>
       <li><button data-a="png">그림으로 저장 (PNG)</button></li>
       <li><button data-a="del" style="color:var(--red)">이 계획 지우기</button></li>
     </ul>`);
@@ -1029,6 +1081,11 @@ function moreMenu() {
     if (a === 'nobg') { d.bg = null; renderBackground(); scheduleSave(); }
     if (a === 'grid') { d.grid = !d.grid; renderBackground(); scheduleSave(); }
     if (a === 'png') exportPng();
+    if (a === 'pressure') {
+      usePressure = !usePressure;
+      try { localStorage.setItem('ref:pressure', usePressure ? '1' : '0'); } catch { /* 이번만 */ }
+      toast(usePressure ? '필압을 켰어요: 펜슬을 세게 누르면 굵게, 살살 누르면 가늘게 그려져요' : '필압을 껐어요: 늘 같은 굵기로 그려져요');
+    }
     if (a === 'pen') { setPenMode(!penMode); toast(penMode ? '펜슬 모드: 펜슬로만 그리고 손가락은 화면 옮기기·확대예요' : '펜슬 모드를 껐어요: 손가락으로도 그려요'); }
     if (a === 'del') confirmDeleteBoard();
   }));
