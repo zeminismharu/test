@@ -148,6 +148,7 @@ async function openBoard(id) {
     v: 1,
     bg: d.bg || null,
     bgOpacity: d.bgOpacity ?? 1,
+    ...(d.bgBox && ['x', 'y', 'w', 'h'].every((k) => Number.isFinite(d.bgBox[k])) ? { bgBox: d.bgBox } : {}),
     grid: d.grid ?? true,
     strokes: d.strokes || [],
     lights: d.lights || [],
@@ -218,8 +219,8 @@ window.addEventListener('beforeunload', (e) => {
 /* ─────────────── 되돌리기 ─────────────── */
 
 function snapshot() {
-  const { strokes, lights, texts } = ed.board.data;
-  return JSON.stringify({ strokes, lights, texts });
+  const { strokes, lights, texts, bgBox, bgOpacity } = ed.board.data;
+  return JSON.stringify({ strokes, lights, texts, bgBox: bgBox || null, bgOpacity });
 }
 
 // 바꾸기 "전"에 부릅니다.
@@ -232,6 +233,7 @@ function remember() {
 
 function restore(snap) {
   Object.assign(ed.board.data, JSON.parse(snap));
+  if (!ed.board.data.bgBox) delete ed.board.data.bgBox; // 도면 자리가 없던 때로 → 사진 비율에 맞춰 다시
   if (ed.selected && !findSelected()) ed.selected = null;
   renderAll();
   scheduleSave();
@@ -356,6 +358,23 @@ function renderAll() {
   updateUndoButtons();
 }
 
+// 도면(배경) 자리: bgBox = { x, y, w, h }. 처음엔 도화지(1600×1000)에 맞춰 가운데, 사진 비율 그대로.
+const bgBoxOf = (d) => d.bgBox || { x: 0, y: 0, w: W, h: H };
+
+function fitBgBox(d) {
+  const key = d.bg;
+  const im = new Image();
+  im.onload = () => {
+    if (ed.board?.data !== d || d.bg !== key || d.bgBox || !im.naturalWidth) return;
+    const r = Math.min(W / im.naturalWidth, H / im.naturalHeight);
+    const w = im.naturalWidth * r; const h = im.naturalHeight * r;
+    d.bgBox = { x: Math.round((W - w) / 2), y: Math.round((H - h) / 2), w: Math.round(w), h: Math.round(h) };
+    renderBackground();
+    renderSelection();
+  };
+  im.src = `/img/${key}`;
+}
+
 function renderBackground() {
   const d = ed.board.data;
   const img = $('#bgImage');
@@ -363,6 +382,10 @@ function renderBackground() {
     img.setAttribute('href', `/img/${d.bg}`);
     img.setAttribute('visibility', 'visible');
     img.setAttribute('opacity', d.bgOpacity);
+    const b = bgBoxOf(d);
+    img.setAttribute('x', b.x); img.setAttribute('y', b.y); img.setAttribute('width', b.w); img.setAttribute('height', b.h);
+    img.setAttribute('data-type', 'bg'); img.setAttribute('data-id', 'bg');
+    if (!d.bgBox) fitBgBox(d);
   } else {
     img.removeAttribute('href');
     img.setAttribute('visibility', 'hidden');
@@ -468,8 +491,9 @@ function renderTexts() {
 function findSelected() {
   const s = ed.selected;
   if (!s) return null;
+  if (s.type === 'bg') return ed.board.data.bg ? bgBoxOf(ed.board.data) : null;
   const list = { light: ed.board.data.lights, text: ed.board.data.texts, stroke: ed.board.data.strokes }[s.type];
-  return list.find((x) => x.id === s.id) || null;
+  return list?.find((x) => x.id === s.id) || null;
 }
 
 function renderSelection() {
@@ -477,6 +501,18 @@ function renderSelection() {
   g.innerHTML = '';
   const s = ed.selected;
   if (!s) return;
+  if (s.type === 'bg') {
+    // 도면: 테두리 + 네 모서리 동그라미(끌면 크기, 비율은 그대로)
+    if (!ed.board.data.bg) return;
+    const b = bgBoxOf(ed.board.data);
+    const u = upp();
+    el('rect', { x: b.x, y: b.y, width: b.w, height: b.h, fill: 'none', stroke: '#3182f6', 'stroke-width': 2.5 * u, 'stroke-dasharray': '10 7', 'pointer-events': 'none' }, g);
+    for (const [id, cx, cy] of [['nw', b.x, b.y], ['ne', b.x + b.w, b.y], ['sw', b.x, b.y + b.h], ['se', b.x + b.w, b.y + b.h]]) {
+      el('circle', { cx, cy, r: 22 * u, fill: 'transparent', 'data-type': 'bgHandle', 'data-id': id }, g); // 누르기 쉬운 큰 자리
+      el('circle', { cx, cy, r: 9 * u, fill: '#fff', stroke: '#3182f6', 'stroke-width': 3 * u, 'pointer-events': 'none' }, g);
+    }
+    return;
+  }
   const node = svg.querySelector(`[data-type="${s.type}"][data-id="${s.id}"]`);
   if (!node) return;
   const b = node.getBBox();
@@ -556,6 +592,23 @@ function renderProps() {
   if (!item) { box.hidden = true; box.innerHTML = ''; return; }
   box.hidden = false;
   const type = ed.selected.type;
+
+  if (type === 'bg') {
+    const d = ed.board.data;
+    box.innerHTML = `
+      <div class="prop-head"><h3 class="panel-h">도면 · 배경</h3><button class="text-btn small" data-act="close">닫기</button></div>
+      <p class="prop-hint">도면 가운데를 끌면 옮겨지고, 네 모서리 동그라미를 끌면 크기가 바뀌어요 (비율은 그대로).</p>
+      <label class="prop"><span>진하기 <b data-out="bgOp">${Math.round((d.bgOpacity ?? 1) * 100)}%</b></span><input type="range" data-bg="op" min="10" max="100" step="5" value="${Math.round((d.bgOpacity ?? 1) * 100)}" /></label>
+      <div class="btn-row"><button class="btn ghost small" data-act="bgReset">처음 크기로</button><button class="btn danger small" data-act="bgDel">도면 빼기</button></div>`;
+    let rem = false;
+    const op = box.querySelector('[data-bg="op"]');
+    op.addEventListener('input', () => { if (!rem) { remember(); rem = true; } d.bgOpacity = Number(op.value) / 100; box.querySelector('[data-out="bgOp"]').textContent = `${op.value}%`; renderBackground(); });
+    op.addEventListener('change', () => { rem = false; scheduleSave(); });
+    box.querySelector('[data-act="close"]').onclick = () => select(null);
+    box.querySelector('[data-act="bgReset"]').onclick = () => { remember(); delete d.bgBox; renderBackground(); renderSelection(); scheduleSave(); };
+    box.querySelector('[data-act="bgDel"]').onclick = () => { remember(); d.bg = null; delete d.bgBox; select(null); renderBackground(); scheduleSave(); };
+    return;
+  }
 
   if (type === 'light') {
     const l = item;
@@ -645,7 +698,8 @@ function select(sel) {
   renderSelection();
   renderProps();
   renderLightList();
-  if (sel) openPanel(true);
+  // 도면은 바로 끌어 옮길 수 있게 패널을 열지 않습니다 (좁은 화면에서 패널이 도면을 가림). 진하기 등은 패널 단추로.
+  if (sel && sel.type !== 'bg') openPanel(true);
 }
 
 function deleteSelected() {
@@ -679,7 +733,7 @@ function contentBox() {
   const d = ed.board.data;
   let x1 = Infinity; let y1 = Infinity; let x2 = -Infinity; let y2 = -Infinity;
   const add = (ax, ay, bx, by) => { x1 = Math.min(x1, ax); y1 = Math.min(y1, ay); x2 = Math.max(x2, bx); y2 = Math.max(y2, by); };
-  if (d.bg) add(0, 0, W, H);
+  if (d.bg) { const b = bgBoxOf(d); add(b.x, b.y, b.x + b.w, b.y + b.h); }
   d.strokes.forEach((st) => { for (let i = 0; i < st.pts.length; i += 2) add(st.pts[i] - st.w, st.pts[i + 1] - st.w, st.pts[i] + st.w, st.pts[i + 1] + st.w); });
   d.lights.forEach((l) => { const r = Math.max(lightSize(l), (l.len ?? 0) / 2 + 40); add(l.x - r, l.y - r, l.x + r, l.y + r); });
   const tl = $('#layerTexts');
@@ -777,8 +831,13 @@ document.addEventListener('click', (e) => {
   if (byTouch && (penDownId !== null || lastPenAt >= touchDownAt - 300)) { e.preventDefault(); e.stopImmediatePropagation(); }
 }, true);
 
+// 아이패드 '손글씨 입력(Scribble)'이 끊어 쓴 펜슬 획을 글자 입력으로 가져가 그림이 사라지는 것을 막습니다.
+// (터치 기본 동작을 막으면 Scribble·확대경·스크롤이 끼어들지 않음 — 포인터 이벤트는 그대로 옴)
+for (const t of ['touchstart', 'touchmove']) stage.addEventListener(t, (e) => { if (e.cancelable) e.preventDefault(); }, { passive: false });
+
 stage.addEventListener('pointerdown', (e) => {
   if (!ed.board) return;
+  if (e.pointerType === 'pen' && document.activeElement && document.activeElement !== document.body) document.activeElement.blur(); // 글자 칸에 커서가 있으면 손글씨 입력이 켜지므로
   if (e.pointerType === 'pen') {
     if (!penMode) { setPenMode(true); toast('펜슬 모드를 켰어요: 펜슬로만 그리고, 손가락은 화면 옮기기·확대예요 (더보기에서 끌 수 있어요)'); }
     penDownId = e.pointerId;
@@ -850,6 +909,18 @@ stage.addEventListener('pointerdown', (e) => {
       setTimeout(() => { const ta = $('#propBox [data-f="text"]'); ta?.focus(); ta?.select(); }, 60);
       gesture = null;
     }
+  } else if (tool === 'select' && hit?.type === 'bgHandle') {
+    const b = { ...bgBoxOf(ed.board.data) };
+    const anchor = { nw: [b.x + b.w, b.y + b.h], ne: [b.x, b.y + b.h], sw: [b.x + b.w, b.y], se: [b.x, b.y] }[hit.id];
+    gesture = { kind: 'resizeBg', corner: hit.id, anchor, orig: b, d0: Math.hypot(p.x - anchor[0], p.y - anchor[1]) || 1, moved: false };
+  } else if (tool === 'select' && hit?.type === 'bg') {
+    if (ed.selected?.type === 'bg') {
+      gesture = { kind: 'moveBg', start: p, orig: { ...bgBoxOf(ed.board.data) }, moved: false };
+    } else {
+      // 한 번 누르면 도면 옮기기·크기 조절 켜짐 (끌면 지금처럼 화면 옮기기)
+      select({ type: 'bg', id: 'bg' });
+      gesture = { kind: 'pan', last: { x: e.clientX, y: e.clientY } };
+    }
   } else if (tool === 'select') {
     if (hit) {
       select(hit);
@@ -860,6 +931,18 @@ stage.addEventListener('pointerdown', (e) => {
     }
   }
 });
+
+function addDrawPoint(p, e) {
+  const pts = gesture.pts;
+  const lx = pts[pts.length - 2]; const ly = pts[pts.length - 1];
+  if (Math.hypot(p.x - lx, p.y - ly) < 1.5 * gesture.u) return;
+  pts.push(p.x, p.y);
+  if (gesture.pr) {
+    // 손 떨림처럼 튀지 않게 부드럽게 (앞 값 60% + 새 값 40%)
+    const prev = gesture.pr[gesture.pr.length - 1];
+    gesture.pr.push(prev * 0.6 + Math.max(0.05, e.pressure || prev) * 0.4);
+  }
+}
 
 function startMove(hit, p, alreadyRemembered = false) {
   const list = hit.type === 'light' ? ed.board.data.lights : ed.board.data.texts;
@@ -903,15 +986,9 @@ stage.addEventListener('pointermove', (e) => {
 
   const p = toBoard(e);
   if (gesture.kind === 'draw') {
-    const pts = gesture.pts;
-    const lx = pts[pts.length - 2]; const ly = pts[pts.length - 1];
-    if (Math.hypot(p.x - lx, p.y - ly) < 2 * gesture.u) return;
-    pts.push(p.x, p.y);
-    if (gesture.pr) {
-      // 손 떨림처럼 튀지 않게 부드럽게 (앞 값 60% + 새 값 40%)
-      const prev = gesture.pr[gesture.pr.length - 1];
-      gesture.pr.push(prev * 0.6 + Math.max(0.05, e.pressure || prev) * 0.4);
-    }
+    // 빠르게 짧게 그은 획은 브라우저가 점 여러 개를 하나로 묶어 보내므로, 묶인 점(getCoalescedEvents)까지 모두 씁니다.
+    const evs = e.getCoalescedEvents?.().length ? e.getCoalescedEvents() : [e];
+    for (const ev of evs) addDrawPoint(toBoard(ev), ev);
     gesture.show();
   } else if (gesture.kind === 'erase') {
     eraseAt(p);
@@ -922,6 +999,24 @@ stage.addEventListener('pointermove', (e) => {
     gesture.item.x = Math.round(p.x - gesture.off.x);
     gesture.item.y = Math.round(p.y - gesture.off.y);
     redrawItem(gesture.type);
+  } else if (gesture.kind === 'moveBg' || gesture.kind === 'resizeBg') {
+    const d = ed.board.data;
+    const o = gesture.orig;
+    if (gesture.kind === 'moveBg') {
+      const dx = p.x - gesture.start.x; const dy = p.y - gesture.start.y;
+      if (!gesture.moved && Math.hypot(dx, dy) < 3 * upp()) return;
+      if (!gesture.moved) { remember(); gesture.moved = true; }
+      d.bgBox = { ...o, x: Math.round(o.x + dx), y: Math.round(o.y + dy) };
+    } else {
+      if (!gesture.moved) { remember(); gesture.moved = true; }
+      const [ax, ay] = gesture.anchor;
+      const k = Math.max(0.05, Math.hypot(p.x - ax, p.y - ay) / gesture.d0);
+      const w = Math.round(o.w * k); const h = Math.round(o.h * k);
+      const c = gesture.corner;
+      d.bgBox = { w, h, x: c === 'nw' || c === 'sw' ? ax - w : ax, y: c === 'nw' || c === 'ne' ? ay - h : ay };
+    }
+    renderBackground();
+    renderSelection();
   } else if (gesture.kind === 'moveStroke') {
     const dx = p.x - gesture.start.x; const dy = p.y - gesture.start.y;
     if (!gesture.moved && Math.hypot(dx, dy) < 3) return;
@@ -942,6 +1037,8 @@ function endPointer(e) {
   }
   if (gesture.kind === 'draw') {
     const pts = gesture.pts;
+    // 펜을 뗀 자리까지 이어 줌 (빠른 짧은 획이 점으로만 남지 않게)
+    if (e.type === 'pointerup' && Number.isFinite(e.clientX)) addDrawPoint(toBoard(e), e);
     if (pts.length === 2) pts.push(pts[0], pts[1]);
     remember();
     const st = { id: uid(), color: ed.color, w: gesture.w, pts };
@@ -952,6 +1049,8 @@ function endPointer(e) {
     }
     ed.board.data.strokes.push(st);
     renderStrokes();
+    scheduleSave();
+  } else if ((gesture.kind === 'moveBg' || gesture.kind === 'resizeBg') && gesture.moved) {
     scheduleSave();
   } else if ((gesture.kind === 'move' && gesture.moved) || (gesture.kind === 'moveStroke' && gesture.moved) || (gesture.kind === 'erase' && gesture.erased)) {
     scheduleSave();
@@ -1050,6 +1149,7 @@ function bindEditor() {
       const blob = await resizeImage(file, 2400);
       const { key } = await api('/api/images', { method: 'POST', raw: blob, type: blob.type });
       ed.board.data.bg = key;
+      delete ed.board.data.bgBox; // 새 도면은 사진 비율에 맞춰 다시 자리 잡기
       ed.board.data.bgOpacity = ed.board.data.bgOpacity || 1;
       renderBackground();
       scheduleSave();
@@ -1066,7 +1166,7 @@ function moreMenu() {
     <h2>더보기</h2>
     <ul class="options">
       <li><button data-a="bg">${d.bg ? '배경 도면·사진 바꾸기' : '배경에 도면·사진 넣기'}</button></li>
-      ${d.bg ? `<li><button data-a="fade">${d.bgOpacity < 1 ? '배경 진하게' : '배경 흐리게'}</button></li><li><button data-a="nobg">배경 빼기</button></li>` : ''}
+      ${d.bg ? `<li><button data-a="bgEdit">도면 옮기기·크기 바꾸기</button></li><li><button data-a="fade">${d.bgOpacity < 1 ? '배경 진하게' : '배경 흐리게'}</button></li><li><button data-a="nobg">배경 빼기</button></li>` : ''}
       <li><button data-a="grid">${d.grid ? '격자 숨기기' : '격자 보이기'}</button></li>
       <li><button data-a="pen">애플 펜슬 모드 <span class="n">${penMode ? '켜짐 · 끄기' : '꺼짐 · 켜기'}</span></button></li>
       <li><button data-a="pressure">펜슬 필압 (세게 누르면 굵게) <span class="n">${usePressure ? '켜짐 · 끄기' : '꺼짐 · 켜기'}</span></button></li>
@@ -1077,6 +1177,7 @@ function moreMenu() {
     const a = b.dataset.a;
     await closeSheet();
     if (a === 'bg') $('#bgInput').click();
+    if (a === 'bgEdit') { setTool('select'); select({ type: 'bg', id: 'bg' }); toast('도면을 끌어 옮기고, 모서리 동그라미로 크기를 바꿔요'); }
     if (a === 'fade') { d.bgOpacity = d.bgOpacity < 1 ? 1 : 0.4; renderBackground(); scheduleSave(); }
     if (a === 'nobg') { d.bg = null; renderBackground(); scheduleSave(); }
     if (a === 'grid') { d.grid = !d.grid; renderBackground(); scheduleSave(); }
