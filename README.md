@@ -36,14 +36,25 @@
 
 | 이름 | 값 |
 |---|---|
-| `CLOUDFLARE_API_TOKEN` | 이사 사이트(8285-html)에 넣은 것과 같은 토큰 |
+| `CLOUDFLARE_API_TOKEN` | 이 앱 전용으로 새로 만든 토큰 (아래 "전용 토큰 만들기") |
 | `CLOUDFLARE_ACCOUNT_ID` | 이사 사이트와 같은 계정 ID |
 | `ADMIN_PASSWORD` | (선택) 잠글 때만. 안 넣으면 열린 모드 |
 | `GEMINI_API_KEY` | https://aistudio.google.com/apikey 에서 만든 키 |
 
-3. **토큰 권한 확인**: Cloudflare → My Profile → API Tokens 에서 그 토큰에
-   `Cloudflare Pages: Edit`, `D1: Edit`, `Workers KV Storage: Edit` 가 있어야 합니다.
-   (이사 사이트 토큰에 Pages 만 있다면 D1·KV 두 개를 추가해 주세요.)
+### 전용 토큰 만들기 (이사 사이트 토큰과 따로)
+
+이 앱 토큰이 새어 나가도 이사·청소 사이트는 안전하도록 따로 만듭니다.
+
+1. https://dash.cloudflare.com/profile/api-tokens 접속 → **Create Token**
+2. 맨 아래 **Custom token → Get started**
+3. Token name: `zeminism-archive 배포`
+4. Permissions 에 3줄 (왼쪽부터 Account → 항목 → Edit)
+   - `Account` · `Cloudflare Pages` · `Edit`
+   - `Account` · `D1` · `Edit`
+   - `Account` · `Workers KV Storage` · `Edit`
+5. Account Resources: `Include` · 이사 사이트가 있는 그 계정
+6. **Continue to summary → Create Token** → 나온 토큰을 복사 (이 화면을 닫으면 다시 볼 수 없음)
+7. 계정 ID: Cloudflare 첫 화면 → **Workers & Pages** → 오른쪽에 있는 **Account ID** 복사
 
 ## 배포하기
 
