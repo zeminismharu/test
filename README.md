@@ -23,7 +23,8 @@
 - 앞으로 할 일(날짜, 체크), 계획 메모
 - 되돌리기/다시, 두 손가락 확대·이동, PNG로 저장, 자동 저장
 
-추가·수정·삭제·AI 설명은 비밀번호로 로그인한 뒤에만 됩니다.
+**지금은 비밀번호 없이 누구나 추가·수정·삭제할 수 있는 '열린 모드'입니다.**
+나중에 잠그려면 `ADMIN_PASSWORD` 비밀값을 넣고 다시 배포하면 됩니다. 그때부터 추가·수정·삭제·AI 설명·관리 화면은 로그인한 뒤에만 됩니다.
 
 ## 처음 한 번 (배포 준비)
 
@@ -37,7 +38,7 @@
 |---|---|
 | `CLOUDFLARE_API_TOKEN` | 이사 사이트(8285-html)에 넣은 것과 같은 토큰 |
 | `CLOUDFLARE_ACCOUNT_ID` | 이사 사이트와 같은 계정 ID |
-| `ADMIN_PASSWORD` | 새로 정할 관리 비밀번호 |
+| `ADMIN_PASSWORD` | (선택) 잠글 때만. 안 넣으면 열린 모드 |
 | `GEMINI_API_KEY` | https://aistudio.google.com/apikey 에서 만든 키 |
 
 3. **토큰 권한 확인**: Cloudflare → My Profile → API Tokens 에서 그 토큰에

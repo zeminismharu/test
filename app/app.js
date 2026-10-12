@@ -27,6 +27,7 @@ async function init() {
   renderSkeleton();
   const [session] = await Promise.all([api('/api/session').catch(() => ({})), loadAll()]);
   state.loggedIn = !!session.loggedIn;
+  state.open = !!session.open;
   renderAuth();
   route();
 }
@@ -110,6 +111,7 @@ function bindStatic() {
 
 function renderAuth() {
   $('#loginBtn').textContent = state.loggedIn ? '로그아웃' : '로그인';
+  $('#loginBtn').hidden = !!state.open; // 비밀번호 없는 열린 모드에서는 로그인 단추를 숨깁니다
 }
 
 /* ─────────────── 검색 · 필터 ─────────────── */

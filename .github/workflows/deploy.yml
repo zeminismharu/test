@@ -11,7 +11,7 @@
 # 처음 한 번은 이 저장소 Settings → Secrets and variables → Actions 에 아래 4개를 넣어야 합니다.
 #   CLOUDFLARE_API_TOKEN   이사 사이트에서 쓰던 것과 같은 값 (D1·KV 편집 권한이 있어야 함 — README 참고)
 #   CLOUDFLARE_ACCOUNT_ID  이사 사이트에서 쓰던 것과 같은 값
-#   ADMIN_PASSWORD         사이트에서 추가·수정·관리할 때 쓸 비밀번호 (새로 정하기)
+#   ADMIN_PASSWORD         (선택) 추가·수정·관리 비밀번호. 안 넣으면 비밀번호 없이 누구나 수정 가능
 #   GEMINI_API_KEY         구글 AI Studio 에서 받은 키 (작가 설명용)
 #
 # 데이터베이스(D1)와 사진 저장소(KV)는 없으면 이 작업이 알아서 만들고 사이트에 연결합니다.

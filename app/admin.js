@@ -51,6 +51,7 @@ async function init() {
   const s = await api('/api/session').catch(() => ({}));
   if (s.loggedIn) showBoards();
   else showLogin();
+  if (s.open) $('#logoutBtn').hidden = true; // 열린 모드에는 로그아웃이 필요 없음
 
   $('#loginForm').onsubmit = async (e) => {
     e.preventDefault();

@@ -26,6 +26,7 @@
  *   D1 database  → DB
  *   KV namespace → IMAGES
  *   Secret       → ADMIN_PASSWORD (수정용 비밀번호), GEMINI_API_KEY (구글 AI 키)
+ *                  ADMIN_PASSWORD 를 넣지 않으면 '열린 모드' — 비밀번호 없이 누구나 추가·수정·관리할 수 있습니다.
  *   선택         → GEMINI_MODEL (기본 gemini-3.6-flash), SESSION_SECRET
  */
 
@@ -65,7 +66,7 @@ async function route(request, env, parts) {
   const m = request.method;
   const [head, id, sub] = parts;
 
-  if (head === 'session' && !id) return m === 'GET' ? json({ loggedIn: await isLoggedIn(request, env) }) : methodNotAllowed();
+  if (head === 'session' && !id) return m === 'GET' ? json({ loggedIn: await isLoggedIn(request, env), open: !env.ADMIN_PASSWORD }) : methodNotAllowed();
   if (head === 'login' && !id) return m === 'POST' ? login(request, env) : methodNotAllowed();
   if (head === 'logout' && !id) return m === 'POST' ? logout() : methodNotAllowed();
 
@@ -466,7 +467,7 @@ async function sign(env, payload) {
 }
 
 async function isLoggedIn(request, env) {
-  if (!env.ADMIN_PASSWORD) return false;
+  if (!env.ADMIN_PASSWORD) return true; // 열린 모드: 비밀번호가 없으면 누구나 수정 가능
   const cookie = request.headers.get('cookie') || '';
   const match = cookie.match(new RegExp(`(?:^|;\\s*)${COOKIE_NAME}=([^;]+)`));
   if (!match) return false;
@@ -481,7 +482,7 @@ async function requireLogin(request, env) {
 }
 
 async function login(request, env) {
-  if (!env.ADMIN_PASSWORD) return json({ error: '비밀번호(ADMIN_PASSWORD)가 아직 설정되지 않았습니다.' }, 503);
+  if (!env.ADMIN_PASSWORD) return json({ ok: true, open: true });
   const body = await readJson(request);
   const given = String(body?.password ?? '');
   // 길이가 달라도 비교 시간이 같도록 해시끼리 비교합니다.
