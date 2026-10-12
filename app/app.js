@@ -20,6 +20,12 @@ const state = {
 // 분류 키맵: 전시관 · 영화 · 그 외 순서. 키보드 1·2·3 (전체 0)
 const CATS = [['exhibition', '전시관'], ['movie', '영화'], ['etc', '그 외']];
 const catLabel = (c) => (CATS.find(([k]) => k === c) || CATS[2])[1];
+// 분류마다 "어디서 봤는지" 칸 이름: 전시관 이름 · 본 곳 · 장소
+const PLACE = {
+  exhibition: ['전시관 이름', '예) 리움미술관, 국립현대미술관 서울'],
+  movie: ['본 곳', '예) CGV 용산, 넷플릭스'],
+  etc: ['장소', '예) 을지로 골목, 성수동 카페'],
+};
 
 const SORTS = { new: '최신순', old: '오래된순', title: '제목순', artist: '작가순' };
 
@@ -88,7 +94,7 @@ window.addEventListener('hashchange', route);
 function bindStatic() {
   $('#brand').onclick = () => { resetFilters(); go('#/'); };
   document.querySelectorAll('.tab').forEach((t) => (t.onclick = () => go(t.dataset.tab === 'home' ? '#/' : '#/artists')));
-  $('#addBtn').onclick = () => (state.loggedIn ? openEditor() : openLogin(() => openEditor()));
+  $('#addBtn').onclick = () => (state.loggedIn ? openAddChoice() : openLogin(() => openAddChoice()));
   $('#loginBtn').onclick = () => (state.loggedIn ? logoutFlow() : openLogin());
   $('#adminBtn').onclick = () => (location.href = '/admin');
   $('#artistBack').onclick = () => go('#/artists');
@@ -137,7 +143,7 @@ function resetFilters() {
 
 function matches(item, q) {
   if (!q) return true;
-  const hay = [item.title, item.artist, item.memo, item.source, ...item.tags].join(' ').toLowerCase();
+  const hay = [item.title, item.artist, item.place, item.memo, item.source, ...item.tags].join(' ').toLowerCase();
   const words = q.toLowerCase().split(/\s+/).filter(Boolean);
   return words.every((w) => {
     if (hay.includes(w.replace(/^#/, ''))) return true;
@@ -247,6 +253,7 @@ function cardHtml(it) {
       ${it.title ? `<p class="item-title">${esc(it.title)}</p>` : ''}
       ${it.artist || !state.cat ? `<div class="item-artist">${[state.cat ? '' : catLabel(it.category), it.artist].filter(Boolean).map(esc).join(' · ')}</div>` : ''}
       ${it.memo ? `<div class="item-memo">${esc(it.memo)}</div>` : ''}
+      <div class="item-sub">${[it.place, fmtDate(it.createdAt)].filter(Boolean).map(esc).join(' · ')}</div>
     </div>
   </button>`;
 }
@@ -394,12 +401,13 @@ function openDetail(id) {
     <span class="detail-cat">${catLabel(it.category)}</span>
     ${it.title ? `<h2 class="detail-title">${esc(it.title)}</h2>` : '<div style="height:8px"></div>'}
     ${it.artist ? `<button class="detail-artist" id="dArtist">${esc(it.artist)} ${ICON.chevron}</button>` : ''}
+    ${it.place ? `<p class="detail-place"><span>${PLACE[it.category]?.[0] || '장소'}</span>${esc(it.place)}</p>` : ''}
     ${it.memo ? `<p class="detail-memo">${esc(it.memo)}</p>` : ''}
     ${it.tags.length ? `<div class="detail-tags">${it.tags.map((t) => `<button data-tag="${esc(t)}">#${esc(t)}</button>`).join('')}</div>` : ''}
     ${it.source ? (/^https?:\/\//i.test(it.source)
       ? `<a class="detail-source" href="${esc(it.source)}" target="_blank" rel="noopener noreferrer">출처 · ${esc(it.source)}</a>`
       : `<span class="detail-source">출처 · ${esc(it.source)}</span>`) : ''}
-    <p class="detail-date">${fmtDate(it.createdAt)} 저장${it.updatedAt !== it.createdAt ? ` · ${fmtDate(it.updatedAt)} 수정` : ''}</p>
+    <p class="detail-date">작성 ${fmtDate(it.createdAt)}${it.updatedAt !== it.createdAt ? ` · 수정 ${fmtDate(it.updatedAt)}` : ''}</p>
     <div class="btn-row detail-actions">
       <button class="btn danger" id="dDel">삭제</button>
       <button class="btn" id="dEdit">수정하기</button>
@@ -453,6 +461,8 @@ function openEditor(it = null) {
     images: it ? [...it.images] : [],
     tags: it ? [...it.tags] : [],
     category: it?.category || state.cat || 'exhibition',
+    catTouched: !!it, // 사람이 분류를 직접 골랐으면 AI가 바꾸지 않음
+    autoDone: !!it, // 새 레퍼런스는 첫 사진을 올리면 AI가 한 번 자동으로 채움
     newKeys: [], // 이번에 새로 올린 사진 (취소하면 지움)
     uploading: 0,
   };
@@ -462,13 +472,19 @@ function openEditor(it = null) {
     <h2>${it ? '레퍼런스 수정' : '새 레퍼런스'}</h2>
     <form class="form" id="editForm" autocomplete="off">
       <div>
-        <span class="label">사진</span>
+        <div class="label-row"><span class="label">사진</span><button type="button" class="ai-fill" id="aiFill" hidden>${ICON.spark}사진으로 채우기</button></div>
         <div class="photos" id="photos"></div>
         <input type="file" id="fileInput" accept="image/*" multiple hidden />
+        <p class="ai-hint" id="aiHint" hidden></p>
       </div>
       <div>
         <span class="label">분류</span>
         <div class="seg-big" id="fCat" role="radiogroup">${CATS.map(([k, label]) => `<button type="button" role="radio" data-cat="${k}">${label}</button>`).join('')}</div>
+      </div>
+      <div>
+        <label class="label" for="fPlace" id="fPlaceLabel">전시관 이름</label>
+        <input class="field" id="fPlace" maxlength="100" list="placeNames" value="${esc(it?.place || '')}" />
+        <datalist id="placeNames">${[...new Set(state.items.map((x) => x.place).filter(Boolean))].map((n) => `<option value="${esc(n)}"></option>`).join('')}</datalist>
       </div>
       <div>
         <label class="label" for="fTitle">제목</label>
@@ -513,12 +529,17 @@ function openEditor(it = null) {
   };
   renderPhotos();
 
-  const renderCat = () => $('#fCat').querySelectorAll('button').forEach((b) => {
-    const on = b.dataset.cat === draft.category;
-    b.classList.toggle('on', on);
-    b.setAttribute('aria-checked', on);
-  });
-  $('#fCat').querySelectorAll('button').forEach((b) => (b.onclick = () => { draft.category = b.dataset.cat; renderCat(); }));
+  const renderCat = () => {
+    $('#fCat').querySelectorAll('button').forEach((b) => {
+      const on = b.dataset.cat === draft.category;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-checked', on);
+    });
+    const [label, ph] = PLACE[draft.category];
+    $('#fPlaceLabel').textContent = label;
+    $('#fPlace').placeholder = ph;
+  };
+  $('#fCat').querySelectorAll('button').forEach((b) => (b.onclick = () => { draft.category = b.dataset.cat; draft.catTouched = true; renderCat(); }));
   renderCat();
 
   $('#fileInput').onchange = async (e) => {
@@ -542,7 +563,40 @@ function openEditor(it = null) {
       draft.uploading--;
       renderPhotos();
     }));
+    if (!draft.autoDone && firstPhoto()) { draft.autoDone = true; runAutoFill(); }
   };
+
+  // ── AI 자동 채우기: 첫 사진을 보고 분류·제목·작가·전시관·태그를 채웁니다. 이미 적은 칸은 건드리지 않습니다.
+  const firstPhoto = () => draft.images.find((k) => !k.startsWith('blob:'));
+  const hint = (text) => { $('#aiHint').hidden = !text; $('#aiHint').textContent = text || ''; };
+  const runAutoFill = async (force = false) => {
+    const key = firstPhoto();
+    if (!key) return;
+    $('#aiFill').disabled = true;
+    hint('AI가 사진을 보고 분류하는 중이에요…');
+    try {
+      const { suggestion: s } = await api('/api/analyze', { method: 'POST', body: { image: key } });
+      if (!$('#editForm')) return; // 그사이 창을 닫았으면 그만
+      const filled = [];
+      const put = (id, v, name) => { const el = $(id); if (v && (force || !el.value.trim())) { el.value = v; filled.push(name); } };
+      if (!draft.catTouched || force) { draft.category = s.category; renderCat(); filled.push(`분류(${catLabel(s.category)})`); }
+      put('#fTitle', s.title, '제목');
+      put('#fArtist', s.artist, '작가');
+      put('#fPlace', s.place, PLACE[draft.category][0]);
+      put('#fMemo', s.memo, '메모');
+      const before = draft.tags.length;
+      if (s.tags?.length) addTags(s.tags.join(','));
+      if (draft.tags.length > before) filled.push('태그');
+      hint(filled.length ? `AI가 채웠어요: ${filled.join(', ')}. 틀리면 고쳐 주세요.` : 'AI가 더 채울 것을 찾지 못했어요.');
+    } catch (err) {
+      hint(`AI 자동 채우기를 못 했어요: ${err.message}`);
+    }
+    $('#aiFill').disabled = false;
+  };
+  const showAiFill = () => { $('#aiFill').hidden = !firstPhoto(); };
+  $('#aiFill').onclick = () => runAutoFill(true);
+  new MutationObserver(showAiFill).observe($('#photos'), { childList: true });
+  showAiFill();
 
   const renderTags = () => {
     const box = $('#tagBox');
@@ -578,6 +632,7 @@ function openEditor(it = null) {
     if (draft.uploading) return toast('사진을 올리는 중이에요. 잠시만 기다려 주세요');
     const body = {
       category: draft.category,
+      place: $('#fPlace').value,
       title: $('#fTitle').value,
       artist: $('#fArtist').value,
       memo: $('#fMemo').value,
@@ -602,6 +657,99 @@ function openEditor(it = null) {
       setBusy($('#fSave'), false);
     }
   };
+}
+
+/* ─────────────── 추가 방법 고르기 · 여러 장 한꺼번에 ─────────────── */
+
+function openAddChoice() {
+  openSheet(`
+    <h2>어떻게 넣을까요?</h2>
+    <div class="choice-list">
+      <button class="choice" id="chBulk" type="button">
+        <span class="choice-ic">${ICON.stack}</span>
+        <span><strong>사진 여러 장 한꺼번에</strong><small>AI가 장마다 전시관·영화·그 외로 나누고, 작가·제목·전시관 이름까지 채워서 따로 저장해요</small></span>
+      </button>
+      <button class="choice" id="chOne" type="button">
+        <span class="choice-ic">${ICON.pencil}</span>
+        <span><strong>하나씩 자세히 넣기</strong><small>사진을 넣으면 AI가 먼저 채워 주고, 직접 고칠 수 있어요</small></span>
+      </button>
+    </div>
+    <input type="file" id="bulkInput" accept="image/*" multiple hidden />`);
+  $('#chOne').onclick = () => openEditor();
+  $('#chBulk').onclick = () => $('#bulkInput').click();
+  $('#bulkInput').onchange = (e) => {
+    const files = [...e.target.files].slice(0, 30);
+    e.target.value = '';
+    if (files.length) runBulk(files);
+  };
+}
+
+// 한 장씩 차례로: 사진 올리기 → AI 분석 → 레퍼런스로 저장. 앞에서 저장한 작가 이름을 뒤 사진이 이어받아 같은 작가로 모입니다.
+async function runBulk(files) {
+  const rows = files.map((f) => ({ file: f, url: URL.createObjectURL(f), state: 'wait', text: '기다리는 중' }));
+  let stop = false;
+  openSheet(`
+    <h2>사진 ${files.length}장 정리하는 중</h2>
+    <ul class="bulk-list" id="bulkList"></ul>
+    <p class="hint" id="bulkSum"></p>
+    <div class="btn-row" style="margin-top:16px"><button class="btn ghost" type="button" id="bulkStop">그만하기</button></div>`,
+  { onClose: () => { stop = true; rows.forEach((r) => URL.revokeObjectURL(r.url)); } });
+  const draw = () => {
+    const list = $('#bulkList');
+    if (!list) return;
+    list.innerHTML = rows.map((r) => `<li class="bulk-row ${r.state}">
+      <img src="${r.url}" alt="" />
+      <div class="bulk-main"><strong>${esc(r.title || r.file.name)}</strong><span>${esc(r.text)}</span></div>
+      ${r.state === 'work' ? '<i class="spin"></i>' : ''}
+    </li>`).join('');
+  };
+  draw();
+  $('#bulkStop').onclick = () => { stop = true; closeSheet(); };
+
+  const counts = { exhibition: 0, movie: 0, etc: 0 };
+  let failed = 0;
+  for (const r of rows) {
+    if (stop) break;
+    r.state = 'work'; r.text = '사진 올리는 중'; draw();
+    let key = null;
+    try {
+      const blob = await resizeImage(r.file);
+      ({ key } = await api('/api/images', { method: 'POST', raw: blob, type: blob.type }));
+      r.text = 'AI가 보는 중'; draw();
+      let s = { category: 'etc', title: '', artist: '', place: '', tags: [], memo: '' };
+      try {
+        ({ suggestion: s } = await api('/api/analyze', { method: 'POST', body: { image: key } }));
+      } catch (err) {
+        r.note = `AI 분석 실패: ${err.message}`;
+      }
+      if (stop) { api(`/api/images/${key}`, { method: 'DELETE' }).catch(() => {}); break; }
+      const body = {
+        category: s.category, title: s.title || r.file.name.replace(/\.[^.]+$/, ''), artist: s.artist,
+        place: s.place, memo: s.memo, tags: s.tags, images: [key], source: '',
+      };
+      const { item } = await api('/api/items', { method: 'POST', body });
+      state.items.unshift(item);
+      counts[item.category]++;
+      r.state = 'done';
+      r.title = item.title;
+      r.text = r.note || [catLabel(item.category), item.artist, item.place].filter(Boolean).join(' · ');
+    } catch (err) {
+      failed++;
+      r.state = 'fail';
+      r.text = err.message || '저장하지 못했어요';
+      if (key) api(`/api/images/${key}`, { method: 'DELETE' }).catch(() => {});
+    }
+    draw();
+    renderAll();
+  }
+  await refreshArtists().catch(() => {});
+  const sum = CATS.map(([k, l]) => (counts[k] ? `${l} ${counts[k]}` : '')).filter(Boolean).join(' · ');
+  const msg = `${sum || '저장한 것 없음'}${failed ? ` · 실패 ${failed}` : ''}`;
+  if ($('#bulkSum')) {
+    $('#bulkSum').textContent = `다 됐어요: ${msg}. 틀린 건 카드를 눌러 고쳐 주세요.`;
+    $('#bulkStop').textContent = '닫기';
+  }
+  toast(`나눠서 저장했어요 (${msg})`);
 }
 
 function cleanupDraft(draft) {

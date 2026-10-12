@@ -10,6 +10,7 @@
  *   POST   /api/images                    로그인. 사진 한 장 올리기 (본문 = 사진 파일)
  *   DELETE /api/images/:key               로그인. 올렸다가 취소한 사진 지우기
  *   GET    /img/:key                      공개. 사진 보기
+ *   POST   /api/analyze  { image }        로그인. 사진을 보고 분류·제목·작가·태그 추천 (Gemini)
  *   GET    /api/artists                   공개. 작가 목록 + 설명
  *   PUT    /api/artists/:name             로그인. 작가 설명 직접 고치기
  *   POST   /api/artists/:name/ai          로그인. 구글 Gemini 로 작가 설명 만들기
@@ -38,7 +39,7 @@ const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const MAX_IMAGES = 20;
 // 분류: 전시관 · 영화 · 그 외 (화면에 보이는 순서)
 const CATEGORIES = ['exhibition', 'movie', 'etc'];
-const LIMITS = { title: 200, artist: 100, memo: 10000, source: 1000, tag: 40, tags: 30, description: 5000 };
+const LIMITS = { place: 100, title: 200, artist: 100, memo: 10000, source: 1000, tag: 40, tags: 30, description: 5000 };
 
 const encoder = new TextEncoder();
 let schemaReady = false;
@@ -88,6 +89,10 @@ async function route(request, env, parts) {
     if (!id && m === 'POST') return (await requireLogin(request, env)) || uploadImage(request, env);
     if (id && !sub && m === 'DELETE') return (await requireLogin(request, env)) || deleteImage(env, id);
     return methodNotAllowed();
+  }
+
+  if (head === 'analyze' && !id) {
+    return m === 'POST' ? (await requireLogin(request, env)) || analyzeImage(request, env) : methodNotAllowed();
   }
 
   if (head === 'artists') {
@@ -150,6 +155,8 @@ async function ensureSchema(env) {
   ]);
   // 2026-10 분류(전시관·영화·그 외) 칸 추가. 이미 있으면 오류가 나므로 무시합니다.
   await env.DB.prepare("ALTER TABLE items ADD COLUMN category TEXT NOT NULL DEFAULT 'etc'").run().catch(() => {});
+  // 2026-10 전시관 이름(본 곳·장소) 칸 추가
+  await env.DB.prepare("ALTER TABLE items ADD COLUMN place TEXT NOT NULL DEFAULT ''").run().catch(() => {});
   schemaReady = true;
 }
 
@@ -159,6 +166,7 @@ function rowToItem(r) {
     title: r.title,
     artist: r.artist,
     category: CATEGORIES.includes(r.category) ? r.category : 'etc',
+    place: r.place || '',
     memo: r.memo,
     tags: safeParse(r.tags, []),
     source: r.source,
@@ -186,6 +194,7 @@ function cleanItem(body) {
     title: str(body.title, LIMITS.title),
     artist: str(body.artist, LIMITS.artist),
     category: CATEGORIES.includes(body.category) ? body.category : 'etc',
+    place: str(body.place, LIMITS.place),
     memo: str(body.memo, LIMITS.memo),
     source: str(body.source, LIMITS.source),
     tags,
@@ -198,11 +207,12 @@ async function createItem(request, env) {
   if (!body) return json({ error: '잘못된 요청입니다.' }, 400);
   const it = cleanItem(body);
   if (!it.title && !it.images.length && !it.memo) return json({ error: '제목, 사진, 메모 중 하나는 있어야 합니다.' }, 400);
+  it.artist = await canonicalArtist(env, it.artist);
   const now = Date.now();
   const id = crypto.randomUUID();
   await env.DB.prepare(
-    'INSERT INTO items (id, title, artist, category, memo, tags, source, images, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-  ).bind(id, it.title, it.artist, it.category, it.memo, JSON.stringify(it.tags), it.source, JSON.stringify(it.images), now, now).run();
+    'INSERT INTO items (id, title, artist, category, place, memo, tags, source, images, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  ).bind(id, it.title, it.artist, it.category, it.place, it.memo, JSON.stringify(it.tags), it.source, JSON.stringify(it.images), now, now).run();
   const row = await env.DB.prepare('SELECT * FROM items WHERE id = ?').bind(id).first();
   return json({ item: rowToItem(row) }, 201);
 }
@@ -214,9 +224,10 @@ async function updateItem(request, env, id) {
   if (!old) return notFound();
   const it = cleanItem(body);
   if (!it.title && !it.images.length && !it.memo) return json({ error: '제목, 사진, 메모 중 하나는 있어야 합니다.' }, 400);
+  it.artist = await canonicalArtist(env, it.artist, id);
   await env.DB.prepare(
-    'UPDATE items SET title = ?, artist = ?, category = ?, memo = ?, tags = ?, source = ?, images = ?, updated_at = ? WHERE id = ?'
-  ).bind(it.title, it.artist, it.category, it.memo, JSON.stringify(it.tags), it.source, JSON.stringify(it.images), Date.now(), id).run();
+    'UPDATE items SET title = ?, artist = ?, category = ?, place = ?, memo = ?, tags = ?, source = ?, images = ?, updated_at = ? WHERE id = ?'
+  ).bind(it.title, it.artist, it.category, it.place, it.memo, JSON.stringify(it.tags), it.source, JSON.stringify(it.images), Date.now(), id).run();
   // 수정하면서 뺀 사진은 저장소에서도 지웁니다.
   const removed = safeParse(old.images, []).filter((k) => !it.images.includes(k));
   await Promise.all(removed.map((k) => env.IMAGES?.delete(k)));
@@ -358,6 +369,143 @@ async function describeArtist(env, name) {
     if (res.status === 429) break;
   }
   return json({ error: `AI 설명을 만들지 못했습니다. ${lastError}`.trim() }, 502);
+}
+
+/* ─────────────── 사진 자동 분류 ─────────────── */
+
+// 이미 있는 작가와 띄어쓰기·대소문자만 다르면 이미 있는 이름으로 맞춥니다. (작가별로 한곳에 모이도록)
+async function canonicalArtist(env, name, exceptId = '') {
+  if (!name) return '';
+  const { results } = await env.DB.prepare("SELECT DISTINCT artist FROM items WHERE artist != '' AND id != ?").bind(exceptId).all();
+  return matchArtist(name, results.map((r) => r.artist));
+}
+
+// 같은 작가인지 비교할 때 띄어쓰기·기호·대소문자는 무시합니다. (제임스 터렐 = 제임스터렐)
+function artistKeyOf(name) {
+  return String(name || '').toLowerCase().normalize('NFC').replace(/[\s.\-_·'"()]/g, '');
+}
+
+function matchArtist(name, existing) {
+  const k = artistKeyOf(name);
+  if (!k) return '';
+  return existing.find((e) => artistKeyOf(e) === k) || name.trim().slice(0, LIMITS.artist);
+}
+
+function analyzePrompt(existing) {
+  return [
+    '이 사진은 사용자가 아이디어 아카이브에 모으는 레퍼런스입니다. 사진을 보고 아래를 JSON 하나로만 답하세요.',
+    '',
+    '- category: "exhibition"(전시·미술관·갤러리·설치작품·작품 사진·전시 포스터), "movie"(영화 장면·스틸컷·영화 포스터·드라마), "etc"(그 외 전부) 중 하나',
+    '- title: 사진을 알아볼 수 있는 짧은 한국어 제목 (작품명·영화 제목을 알면 그것, 모르면 무엇이 보이는지)',
+    '- artist: 작가·감독·디자이너 이름. 확실할 때만 쓰고, 모르면 빈 문자열 ""',
+    '- place: 전시관·미술관·갤러리 이름(전시일 때), 사진에 글자로 보이거나 확실할 때만. 모르면 ""',
+    '- tags: 한국어 태그 2~5개 (예: 조명, 색감, 공간, 타이포그래피)',
+    '- memo: 사진에서 눈여겨볼 점 한두 문장 (한국어)',
+    '',
+    '작가 이름 규칙:',
+    existing.length
+      ? `- 사용자가 이미 저장한 작가: ${existing.slice(0, 300).join(', ')}`
+      : '- 아직 저장된 작가가 없습니다.',
+    '- 위 목록에 같은 사람이 있으면(영어·한국어 표기가 달라도) 반드시 목록에 적힌 이름을 글자 그대로 쓰세요.',
+    '- 목록에 없는 새 작가면 한국에서 흔히 쓰는 한국어 표기로 쓰세요.',
+    '- 추측하지 마세요. 확실하지 않으면 artist 는 "" 입니다.',
+  ].join('\n');
+}
+
+function cleanAnalysis(raw, existing) {
+  const o = raw && typeof raw === 'object' ? raw : {};
+  const tags = (Array.isArray(o.tags) ? o.tags : []).map((t) => String(t).replace(/^#/, '').trim().slice(0, LIMITS.tag)).filter(Boolean).slice(0, 5);
+  return {
+    category: CATEGORIES.includes(o.category) ? o.category : 'etc',
+    title: String(o.title || '').trim().slice(0, LIMITS.title),
+    artist: matchArtist(String(o.artist || ''), existing),
+    place: String(o.place || '').trim().slice(0, LIMITS.place),
+    tags,
+    memo: String(o.memo || '').trim().slice(0, 500),
+  };
+}
+
+function parseJsonLoose(text) {
+  try { return JSON.parse(text); } catch { /* 아래에서 다시 */ }
+  const m = String(text).match(/\{[\s\S]*\}/);
+  if (m) { try { return JSON.parse(m[0]); } catch { /* 실패 */ } }
+  return null;
+}
+
+function toBase64(buf) {
+  const bytes = new Uint8Array(buf);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+
+async function analyzeImage(request, env) {
+  if (!env.GEMINI_API_KEY) return json({ error: '구글 AI 키(GEMINI_API_KEY)가 설정되지 않았습니다.' }, 503);
+  if (!env.IMAGES) return json({ error: '사진 저장소(IMAGES)가 연결되지 않았습니다.' }, 503);
+  const body = await readJson(request);
+  const key = String(body?.image || '');
+  if (!/^[a-z0-9-]{8,64}$/.test(key)) return json({ error: '사진이 없습니다.' }, 400);
+  const { value, metadata } = await env.IMAGES.getWithMetadata(key, 'arrayBuffer');
+  if (!value) return json({ error: '사진을 찾을 수 없습니다.' }, 404);
+
+  const { results } = await env.DB.prepare("SELECT artist, COUNT(*) AS n FROM items WHERE artist != '' GROUP BY artist ORDER BY n DESC").all();
+  const existing = results.map((r) => r.artist);
+
+  const parts = [{ text: analyzePrompt(existing) }, { inlineData: { mimeType: metadata?.type || 'image/jpeg', data: toBase64(value) } }];
+  const schema = {
+    type: 'OBJECT',
+    properties: {
+      category: { type: 'STRING', enum: CATEGORIES },
+      title: { type: 'STRING' },
+      artist: { type: 'STRING' },
+      place: { type: 'STRING' },
+      tags: { type: 'ARRAY', items: { type: 'STRING' } },
+      memo: { type: 'STRING' },
+    },
+    required: ['category', 'title', 'artist', 'tags'],
+  };
+  const model = env.GEMINI_MODEL || DEFAULT_MODEL;
+  // 정해진 모양(JSON)으로 먼저 묻고, 안 되면 모양 없이, 그래도 안 되면 다른 모델로 묻습니다.
+  const attempts = [
+    { model, schema: true },
+    { model, schema: false },
+    ...(model !== FALLBACK_MODEL ? [{ model: FALLBACK_MODEL, schema: false }] : []),
+  ];
+  let lastError = '';
+  for (const a of attempts) {
+    const generationConfig = { responseMimeType: 'application/json' };
+    if (a.schema) generationConfig.responseSchema = schema;
+    const res = await geminiRequest(env.GEMINI_API_KEY, a.model, { contents: [{ role: 'user', parts }], generationConfig });
+    if (res.text) {
+      const parsed = parseJsonLoose(res.text);
+      if (parsed) return json({ suggestion: cleanAnalysis(parsed, existing), model: a.model });
+      lastError = 'AI 답을 읽지 못했습니다.';
+      continue;
+    }
+    lastError = res.error;
+    if (res.status === 429 || (res.status === 400 && /API key/i.test(res.error))) break;
+  }
+  return json({ error: `사진을 분석하지 못했습니다. ${lastError}`.trim() }, 502);
+}
+
+async function geminiRequest(apiKey, model, body) {
+  let res;
+  try {
+    res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    return { error: '구글 AI에 연결하지 못했습니다.', status: 0 };
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg = data?.error?.message || `HTTP ${res.status}`;
+    return { error: res.status === 429 ? '구글 AI 사용량 한도에 걸렸습니다. 잠시 뒤 다시 해 주세요.' : msg, status: res.status };
+  }
+  const text = (data?.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('').trim();
+  return text ? { text, status: res.status } : { error: '구글 AI가 빈 답을 보냈습니다.', status: res.status };
 }
 
 async function callGemini(apiKey, model, prompt, withSearch) {

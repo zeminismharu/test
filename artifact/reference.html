@@ -390,6 +390,39 @@ textarea.field { min-height: 120px; line-height: 1.6; }
 .detail-cat { display: inline-block; margin-top: 16px; font-size: 13px; font-weight: 700; color: var(--blue); background: var(--blue-soft); padding: 4px 10px; border-radius: 8px; }
 .detail-cat + .detail-title { margin-top: 8px; }
 
+/* ── 작성일 · 전시관 이름 ── */
+.item-sub { color: var(--text-3); font-size: 12px; font-weight: 500; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.detail-place { display: flex; gap: 8px; align-items: baseline; margin: 10px 0 0; font-size: 16px; font-weight: 600; color: var(--text); }
+.detail-place span { flex: none; font-size: 13px; font-weight: 700; color: var(--text-3); }
+
+/* ── AI 자동 채우기 ── */
+.label-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.label-row .label { margin: 0; }
+.ai-fill { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 700; color: var(--blue); background: var(--blue-soft); padding: 6px 10px; border-radius: 10px; }
+.ai-fill svg { width: 16px; height: 16px; }
+.ai-fill:disabled { opacity: .5; }
+.ai-hint { margin: 10px 0 0; font-size: 14px; font-weight: 600; color: var(--blue); background: var(--blue-soft); padding: 10px 12px; border-radius: 12px; }
+
+/* ── 추가 방법 고르기 ── */
+.choice-list { display: flex; flex-direction: column; gap: 10px; }
+.choice { display: flex; gap: 14px; align-items: center; text-align: left; padding: 16px; border-radius: 18px; background: var(--bg-2); }
+.choice:active { background: var(--line); }
+.choice strong { display: block; font-size: 17px; }
+.choice small { display: block; color: var(--text-2); font-size: 14px; margin-top: 2px; line-height: 1.45; }
+.choice-ic { flex: none; width: 48px; height: 48px; border-radius: 14px; background: var(--blue); color: #fff; display: grid; place-items: center; }
+
+/* ── 여러 장 진행 목록 ── */
+.bulk-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.bulk-row { display: flex; align-items: center; gap: 12px; padding: 8px; border-radius: 14px; background: var(--bg-3); }
+.bulk-row img { width: 52px; height: 52px; object-fit: cover; border-radius: 10px; flex: none; }
+.bulk-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.bulk-main strong { font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bulk-main span { font-size: 13px; color: var(--text-3); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bulk-row.done .bulk-main span { color: var(--blue); }
+.bulk-row.fail .bulk-main span { color: var(--red); }
+.bulk-row.wait { opacity: .55; }
+.spin { flex: none; width: 20px; height: 20px; border-radius: 50%; border: 2.5px solid var(--line); border-top-color: var(--blue); animation: spin .7s linear infinite; }
+
 /* 관리 화면 — 작업 계획 보드 */
 
 .back-link { display: inline-flex; align-items: center; gap: 2px; color: var(--text-2); font-weight: 600; font-size: 15px; text-decoration: none; }
@@ -587,7 +620,7 @@ input[type=range]::-moz-range-thumb { width: 24px; height: 24px; border-radius: 
       <div class="cat-tabs" id="catTabs" role="tablist" aria-label="분류"></div>
       <label class="search">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-        <input id="search" type="search" placeholder="제목, 작가, 메모, 태그로 찾기" autocomplete="off" />
+        <input id="search" type="search" placeholder="제목, 작가, 전시관, 메모, 태그로 찾기" autocomplete="off" />
       </label>
 
       <div class="filter-row">
@@ -806,7 +839,7 @@ const CAPS = (async () => {
 })();
 
 const CATEGORIES = ['exhibition', 'movie', 'etc'];
-const LIMITS = { title: 200, artist: 100, memo: 10000, source: 1000, tag: 40, tags: 30, description: 5000 };
+const LIMITS = { place: 100, title: 200, artist: 100, memo: 10000, source: 1000, tag: 40, tags: 30, description: 5000 };
 
 function fail(message, status = 400) {
   throw Object.assign(new Error(message), { status });
@@ -848,6 +881,7 @@ function cleanItem(body) {
     title: str(body.title, LIMITS.title),
     artist: str(body.artist, LIMITS.artist),
     category: CATEGORIES.includes(body.category) ? body.category : 'etc',
+    place: str(body.place, LIMITS.place),
     memo: str(body.memo, LIMITS.memo),
     source: str(body.source, LIMITS.source),
     tags,
@@ -858,7 +892,7 @@ function cleanItem(body) {
 function toItem(snap) {
   const d = snap.data();
   return {
-    id: snap.id, title: d.title || '', artist: d.artist || '', category: CATEGORIES.includes(d.category) ? d.category : 'etc', memo: d.memo || '', tags: d.tags || [],
+    id: snap.id, title: d.title || '', artist: d.artist || '', category: CATEGORIES.includes(d.category) ? d.category : 'etc', place: d.place || '', memo: d.memo || '', tags: d.tags || [],
     source: d.source || '', images: d.images || [], createdAt: d.createdAt || 0, updatedAt: d.updatedAt || 0,
   };
 }
@@ -883,6 +917,51 @@ function boardSummary(data) {
     todos: todos.length,
     done: todos.filter((t) => t.done).length,
     bg: typeof data.bg === 'string' ? data.bg : null,
+  };
+}
+
+// 같은 작가인지 비교할 때 띄어쓰기·기호·대소문자는 무시합니다.
+const artistKeyOf = (n) => String(n || '').toLowerCase().normalize('NFC').replace(/[\s.\-_·'"()]/g, '');
+function matchArtist(name, existing) {
+  const k = artistKeyOf(name);
+  if (!k) return '';
+  return existing.find((e) => artistKeyOf(e) === k) || String(name).trim().slice(0, LIMITS.artist);
+}
+const artistsOf = (items, exceptId) => [...new Set(items.filter((i) => i.id !== exceptId && i.artist).map((i) => i.artist))];
+
+async function analyzeWithAi(key, items) {
+  const sample = await need('sample');
+  const caps = await sample.limits().catch(() => null);
+  if (!caps?.images) fail('이 화면에서는 AI에게 사진을 보낼 수 없어요.', 503);
+  const blob = await (await fetch(`/_blob/${key}`)).blob();
+  const existing = artistsOf(items);
+  const prompt = [
+    '첨부한 사진은 사용자가 아이디어 아카이브에 모으는 레퍼런스입니다. 사진을 보고 아래 키를 가진 JSON 객체 하나로만 답하세요.',
+    '- category: "exhibition"(전시·미술관·갤러리·설치작품·작품 사진·전시 포스터), "movie"(영화 장면·스틸컷·영화 포스터·드라마), "etc"(그 외 전부) 중 하나',
+    '- title: 사진을 알아볼 수 있는 짧은 한국어 제목 (작품명·영화 제목을 알면 그것, 모르면 무엇이 보이는지)',
+    '- artist: 작가·감독·디자이너 이름. 확실할 때만, 모르면 ""',
+    '- place: 전시관·미술관·갤러리 이름(전시일 때), 사진에 글자로 보이거나 확실할 때만. 모르면 ""',
+    '- tags: 한국어 태그 2~5개 배열',
+    '- memo: 사진에서 눈여겨볼 점 한두 문장 (한국어)',
+    existing.length ? `사용자가 이미 저장한 작가: ${existing.slice(0, 300).join(', ')}` : '아직 저장된 작가가 없습니다.',
+    '위 목록에 같은 사람이 있으면(영어·한국어 표기가 달라도) 목록의 이름을 글자 그대로 쓰세요. 새 작가면 한국어 표기로. 추측하지 마세요.',
+  ].join('\n');
+  let o;
+  try {
+    o = await sample.json(prompt, { images: [blob], modelTier: 'default' });
+  } catch (err) {
+    if (err?.code === 'not_granted') fail('AI 사용을 허락하지 않아서 분석하지 못했어요.', 403);
+    if (err?.code === 'rate_limited') fail('AI를 너무 자주 불렀어요. 잠시 뒤 다시 해 주세요.', 429);
+    fail('사진을 분석하지 못했어요.', 502);
+  }
+  o = o && typeof o === 'object' ? o : {};
+  return {
+    category: CATEGORIES.includes(o.category) ? o.category : 'etc',
+    title: str(o.title, LIMITS.title),
+    artist: matchArtist(o.artist, existing),
+    place: str(o.place, LIMITS.place),
+    tags: (Array.isArray(o.tags) ? o.tags : []).map((t) => str(t, LIMITS.tag).replace(/^#/, '')).filter(Boolean).slice(0, 5),
+    memo: str(o.memo, 500),
   };
 }
 
@@ -936,6 +1015,7 @@ async function api(path, { method = 'GET', body, raw } = {}) {
     if (!id && m === 'POST') {
       const it = cleanItem(body || {});
       if (!it.title && !it.images.length && !it.memo) fail('제목, 사진, 메모 중 하나는 있어야 합니다.');
+      it.artist = matchArtist(it.artist, artistsOf(await allItems(db)));
       const now = Date.now();
       const ref = db.collection('items').doc();
       await ref.set({ ...it, createdAt: now, updatedAt: now }).catch(dbError);
@@ -948,6 +1028,7 @@ async function api(path, { method = 'GET', body, raw } = {}) {
     if (m === 'PUT') {
       const it = cleanItem(body || {});
       if (!it.title && !it.images.length && !it.memo) fail('제목, 사진, 메모 중 하나는 있어야 합니다.');
+      it.artist = matchArtist(it.artist, artistsOf(await allItems(db), id));
       const now = Date.now();
       await ref.set({ ...it, createdAt: prev.createdAt, updatedAt: now }).catch(dbError);
       const assets = (await CAPS).assets;
@@ -960,6 +1041,12 @@ async function api(path, { method = 'GET', body, raw } = {}) {
       await Promise.all(prev.images.map((k) => assets?.delete(k).catch(() => {})));
       return { ok: true };
     }
+  }
+
+  if (head === 'analyze' && m === 'POST') {
+    const key = String(body?.image || '');
+    if (!key) fail('사진이 없습니다.');
+    return { suggestion: await analyzeWithAi(key, await allItems(db)) };
   }
 
   if (head === 'images') {
@@ -1176,6 +1263,9 @@ if (document.readyState !== 'loading') {
 const ICON = {
   x: '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>',
   chevron: '<svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>',
+  spark: '<svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>',
+  stack: '<svg viewBox="0 0 24 24"><rect x="7" y="7" width="13" height="13" rx="3"/><path d="M4 16V6a2 2 0 0 1 2-2h10"/></svg>',
+  pencil: '<svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>',
   camera: '<svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>',
 };
 
@@ -2281,6 +2371,12 @@ const state = {
 // 분류 키맵: 전시관 · 영화 · 그 외 순서. 키보드 1·2·3 (전체 0)
 const CATS = [['exhibition', '전시관'], ['movie', '영화'], ['etc', '그 외']];
 const catLabel = (c) => (CATS.find(([k]) => k === c) || CATS[2])[1];
+// 분류마다 "어디서 봤는지" 칸 이름: 전시관 이름 · 본 곳 · 장소
+const PLACE = {
+  exhibition: ['전시관 이름', '예) 리움미술관, 국립현대미술관 서울'],
+  movie: ['본 곳', '예) CGV 용산, 넷플릭스'],
+  etc: ['장소', '예) 을지로 골목, 성수동 카페'],
+};
 
 const SORTS = { new: '최신순', old: '오래된순', title: '제목순', artist: '작가순' };
 
@@ -2349,7 +2445,7 @@ let navHash = '#/';
 function bindStatic() {
   $('#brand').onclick = () => { resetFilters(); go('#/'); };
   document.querySelectorAll('.tab').forEach((t) => (t.onclick = () => go(t.dataset.tab === 'home' ? '#/' : '#/artists')));
-  $('#addBtn').onclick = () => (state.loggedIn ? openEditor() : openLogin(() => openEditor()));
+  $('#addBtn').onclick = () => (state.loggedIn ? openAddChoice() : openLogin(() => openAddChoice()));
   $('#loginBtn').onclick = () => (state.loggedIn ? logoutFlow() : openLogin());
   $('#adminBtn').onclick = () => showScreen('admin');
   $('#artistBack').onclick = () => go('#/artists');
@@ -2399,7 +2495,7 @@ function resetFilters() {
 
 function matches(item, q) {
   if (!q) return true;
-  const hay = [item.title, item.artist, item.memo, item.source, ...item.tags].join(' ').toLowerCase();
+  const hay = [item.title, item.artist, item.place, item.memo, item.source, ...item.tags].join(' ').toLowerCase();
   const words = q.toLowerCase().split(/\s+/).filter(Boolean);
   return words.every((w) => {
     if (hay.includes(w.replace(/^#/, ''))) return true;
@@ -2509,6 +2605,7 @@ function cardHtml(it) {
       ${it.title ? `<p class="item-title">${esc(it.title)}</p>` : ''}
       ${it.artist || !state.cat ? `<div class="item-artist">${[state.cat ? '' : catLabel(it.category), it.artist].filter(Boolean).map(esc).join(' · ')}</div>` : ''}
       ${it.memo ? `<div class="item-memo">${esc(it.memo)}</div>` : ''}
+      <div class="item-sub">${[it.place, fmtDate(it.createdAt)].filter(Boolean).map(esc).join(' · ')}</div>
     </div>
   </button>`;
 }
@@ -2656,12 +2753,13 @@ function openDetail(id) {
     <span class="detail-cat">${catLabel(it.category)}</span>
     ${it.title ? `<h2 class="detail-title">${esc(it.title)}</h2>` : '<div style="height:8px"></div>'}
     ${it.artist ? `<button class="detail-artist" id="dArtist">${esc(it.artist)} ${ICON.chevron}</button>` : ''}
+    ${it.place ? `<p class="detail-place"><span>${PLACE[it.category]?.[0] || '장소'}</span>${esc(it.place)}</p>` : ''}
     ${it.memo ? `<p class="detail-memo">${esc(it.memo)}</p>` : ''}
     ${it.tags.length ? `<div class="detail-tags">${it.tags.map((t) => `<button data-tag="${esc(t)}">#${esc(t)}</button>`).join('')}</div>` : ''}
     ${it.source ? (/^https?:\/\//i.test(it.source)
       ? `<a class="detail-source" href="${esc(it.source)}" target="_blank" rel="noopener noreferrer">출처 · ${esc(it.source)}</a>`
       : `<span class="detail-source">출처 · ${esc(it.source)}</span>`) : ''}
-    <p class="detail-date">${fmtDate(it.createdAt)} 저장${it.updatedAt !== it.createdAt ? ` · ${fmtDate(it.updatedAt)} 수정` : ''}</p>
+    <p class="detail-date">작성 ${fmtDate(it.createdAt)}${it.updatedAt !== it.createdAt ? ` · 수정 ${fmtDate(it.updatedAt)}` : ''}</p>
     <div class="btn-row detail-actions">
       <button class="btn danger" id="dDel">삭제</button>
       <button class="btn" id="dEdit">수정하기</button>
@@ -2715,6 +2813,8 @@ function openEditor(it = null) {
     images: it ? [...it.images] : [],
     tags: it ? [...it.tags] : [],
     category: it?.category || state.cat || 'exhibition',
+    catTouched: !!it, // 사람이 분류를 직접 골랐으면 AI가 바꾸지 않음
+    autoDone: !!it, // 새 레퍼런스는 첫 사진을 올리면 AI가 한 번 자동으로 채움
     newKeys: [], // 이번에 새로 올린 사진 (취소하면 지움)
     uploading: 0,
   };
@@ -2724,13 +2824,19 @@ function openEditor(it = null) {
     <h2>${it ? '레퍼런스 수정' : '새 레퍼런스'}</h2>
     <form class="form" id="editForm" autocomplete="off">
       <div>
-        <span class="label">사진</span>
+        <div class="label-row"><span class="label">사진</span><button type="button" class="ai-fill" id="aiFill" hidden>${ICON.spark}사진으로 채우기</button></div>
         <div class="photos" id="photos"></div>
         <input type="file" id="fileInput" accept="image/*" multiple hidden />
+        <p class="ai-hint" id="aiHint" hidden></p>
       </div>
       <div>
         <span class="label">분류</span>
         <div class="seg-big" id="fCat" role="radiogroup">${CATS.map(([k, label]) => `<button type="button" role="radio" data-cat="${k}">${label}</button>`).join('')}</div>
+      </div>
+      <div>
+        <label class="label" for="fPlace" id="fPlaceLabel">전시관 이름</label>
+        <input class="field" id="fPlace" maxlength="100" list="placeNames" value="${esc(it?.place || '')}" />
+        <datalist id="placeNames">${[...new Set(state.items.map((x) => x.place).filter(Boolean))].map((n) => `<option value="${esc(n)}"></option>`).join('')}</datalist>
       </div>
       <div>
         <label class="label" for="fTitle">제목</label>
@@ -2775,12 +2881,17 @@ function openEditor(it = null) {
   };
   renderPhotos();
 
-  const renderCat = () => $('#fCat').querySelectorAll('button').forEach((b) => {
-    const on = b.dataset.cat === draft.category;
-    b.classList.toggle('on', on);
-    b.setAttribute('aria-checked', on);
-  });
-  $('#fCat').querySelectorAll('button').forEach((b) => (b.onclick = () => { draft.category = b.dataset.cat; renderCat(); }));
+  const renderCat = () => {
+    $('#fCat').querySelectorAll('button').forEach((b) => {
+      const on = b.dataset.cat === draft.category;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-checked', on);
+    });
+    const [label, ph] = PLACE[draft.category];
+    $('#fPlaceLabel').textContent = label;
+    $('#fPlace').placeholder = ph;
+  };
+  $('#fCat').querySelectorAll('button').forEach((b) => (b.onclick = () => { draft.category = b.dataset.cat; draft.catTouched = true; renderCat(); }));
   renderCat();
 
   $('#fileInput').onchange = async (e) => {
@@ -2804,7 +2915,40 @@ function openEditor(it = null) {
       draft.uploading--;
       renderPhotos();
     }));
+    if (!draft.autoDone && firstPhoto()) { draft.autoDone = true; runAutoFill(); }
   };
+
+  // ── AI 자동 채우기: 첫 사진을 보고 분류·제목·작가·전시관·태그를 채웁니다. 이미 적은 칸은 건드리지 않습니다.
+  const firstPhoto = () => draft.images.find((k) => !k.startsWith('blob:'));
+  const hint = (text) => { $('#aiHint').hidden = !text; $('#aiHint').textContent = text || ''; };
+  const runAutoFill = async (force = false) => {
+    const key = firstPhoto();
+    if (!key) return;
+    $('#aiFill').disabled = true;
+    hint('AI가 사진을 보고 분류하는 중이에요…');
+    try {
+      const { suggestion: s } = await api('/api/analyze', { method: 'POST', body: { image: key } });
+      if (!$('#editForm')) return; // 그사이 창을 닫았으면 그만
+      const filled = [];
+      const put = (id, v, name) => { const el = $(id); if (v && (force || !el.value.trim())) { el.value = v; filled.push(name); } };
+      if (!draft.catTouched || force) { draft.category = s.category; renderCat(); filled.push(`분류(${catLabel(s.category)})`); }
+      put('#fTitle', s.title, '제목');
+      put('#fArtist', s.artist, '작가');
+      put('#fPlace', s.place, PLACE[draft.category][0]);
+      put('#fMemo', s.memo, '메모');
+      const before = draft.tags.length;
+      if (s.tags?.length) addTags(s.tags.join(','));
+      if (draft.tags.length > before) filled.push('태그');
+      hint(filled.length ? `AI가 채웠어요: ${filled.join(', ')}. 틀리면 고쳐 주세요.` : 'AI가 더 채울 것을 찾지 못했어요.');
+    } catch (err) {
+      hint(`AI 자동 채우기를 못 했어요: ${err.message}`);
+    }
+    $('#aiFill').disabled = false;
+  };
+  const showAiFill = () => { $('#aiFill').hidden = !firstPhoto(); };
+  $('#aiFill').onclick = () => runAutoFill(true);
+  new MutationObserver(showAiFill).observe($('#photos'), { childList: true });
+  showAiFill();
 
   const renderTags = () => {
     const box = $('#tagBox');
@@ -2840,6 +2984,7 @@ function openEditor(it = null) {
     if (draft.uploading) return toast('사진을 올리는 중이에요. 잠시만 기다려 주세요');
     const body = {
       category: draft.category,
+      place: $('#fPlace').value,
       title: $('#fTitle').value,
       artist: $('#fArtist').value,
       memo: $('#fMemo').value,
@@ -2864,6 +3009,99 @@ function openEditor(it = null) {
       setBusy($('#fSave'), false);
     }
   };
+}
+
+/* ─────────────── 추가 방법 고르기 · 여러 장 한꺼번에 ─────────────── */
+
+function openAddChoice() {
+  openSheet(`
+    <h2>어떻게 넣을까요?</h2>
+    <div class="choice-list">
+      <button class="choice" id="chBulk" type="button">
+        <span class="choice-ic">${ICON.stack}</span>
+        <span><strong>사진 여러 장 한꺼번에</strong><small>AI가 장마다 전시관·영화·그 외로 나누고, 작가·제목·전시관 이름까지 채워서 따로 저장해요</small></span>
+      </button>
+      <button class="choice" id="chOne" type="button">
+        <span class="choice-ic">${ICON.pencil}</span>
+        <span><strong>하나씩 자세히 넣기</strong><small>사진을 넣으면 AI가 먼저 채워 주고, 직접 고칠 수 있어요</small></span>
+      </button>
+    </div>
+    <input type="file" id="bulkInput" accept="image/*" multiple hidden />`);
+  $('#chOne').onclick = () => openEditor();
+  $('#chBulk').onclick = () => $('#bulkInput').click();
+  $('#bulkInput').onchange = (e) => {
+    const files = [...e.target.files].slice(0, 30);
+    e.target.value = '';
+    if (files.length) runBulk(files);
+  };
+}
+
+// 한 장씩 차례로: 사진 올리기 → AI 분석 → 레퍼런스로 저장. 앞에서 저장한 작가 이름을 뒤 사진이 이어받아 같은 작가로 모입니다.
+async function runBulk(files) {
+  const rows = files.map((f) => ({ file: f, url: URL.createObjectURL(f), state: 'wait', text: '기다리는 중' }));
+  let stop = false;
+  openSheet(`
+    <h2>사진 ${files.length}장 정리하는 중</h2>
+    <ul class="bulk-list" id="bulkList"></ul>
+    <p class="hint" id="bulkSum"></p>
+    <div class="btn-row" style="margin-top:16px"><button class="btn ghost" type="button" id="bulkStop">그만하기</button></div>`,
+  { onClose: () => { stop = true; rows.forEach((r) => URL.revokeObjectURL(r.url)); } });
+  const draw = () => {
+    const list = $('#bulkList');
+    if (!list) return;
+    list.innerHTML = rows.map((r) => `<li class="bulk-row ${r.state}">
+      <img src="${r.url}" alt="" />
+      <div class="bulk-main"><strong>${esc(r.title || r.file.name)}</strong><span>${esc(r.text)}</span></div>
+      ${r.state === 'work' ? '<i class="spin"></i>' : ''}
+    </li>`).join('');
+  };
+  draw();
+  $('#bulkStop').onclick = () => { stop = true; closeSheet(); };
+
+  const counts = { exhibition: 0, movie: 0, etc: 0 };
+  let failed = 0;
+  for (const r of rows) {
+    if (stop) break;
+    r.state = 'work'; r.text = '사진 올리는 중'; draw();
+    let key = null;
+    try {
+      const blob = await resizeImage(r.file);
+      ({ key } = await api('/api/images', { method: 'POST', raw: blob, type: blob.type }));
+      r.text = 'AI가 보는 중'; draw();
+      let s = { category: 'etc', title: '', artist: '', place: '', tags: [], memo: '' };
+      try {
+        ({ suggestion: s } = await api('/api/analyze', { method: 'POST', body: { image: key } }));
+      } catch (err) {
+        r.note = `AI 분석 실패: ${err.message}`;
+      }
+      if (stop) { api(`/api/images/${key}`, { method: 'DELETE' }).catch(() => {}); break; }
+      const body = {
+        category: s.category, title: s.title || r.file.name.replace(/\.[^.]+$/, ''), artist: s.artist,
+        place: s.place, memo: s.memo, tags: s.tags, images: [key], source: '',
+      };
+      const { item } = await api('/api/items', { method: 'POST', body });
+      state.items.unshift(item);
+      counts[item.category]++;
+      r.state = 'done';
+      r.title = item.title;
+      r.text = r.note || [catLabel(item.category), item.artist, item.place].filter(Boolean).join(' · ');
+    } catch (err) {
+      failed++;
+      r.state = 'fail';
+      r.text = err.message || '저장하지 못했어요';
+      if (key) api(`/api/images/${key}`, { method: 'DELETE' }).catch(() => {});
+    }
+    draw();
+    renderAll();
+  }
+  await refreshArtists().catch(() => {});
+  const sum = CATS.map(([k, l]) => (counts[k] ? `${l} ${counts[k]}` : '')).filter(Boolean).join(' · ');
+  const msg = `${sum || '저장한 것 없음'}${failed ? ` · 실패 ${failed}` : ''}`;
+  if ($('#bulkSum')) {
+    $('#bulkSum').textContent = `다 됐어요: ${msg}. 틀린 건 카드를 눌러 고쳐 주세요.`;
+    $('#bulkStop').textContent = '닫기';
+  }
+  toast(`나눠서 저장했어요 (${msg})`);
 }
 
 function cleanupDraft(draft) {

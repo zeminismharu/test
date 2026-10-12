@@ -369,3 +369,36 @@ textarea.field { min-height: 120px; line-height: 1.6; }
 
 .detail-cat { display: inline-block; margin-top: 16px; font-size: 13px; font-weight: 700; color: var(--blue); background: var(--blue-soft); padding: 4px 10px; border-radius: 8px; }
 .detail-cat + .detail-title { margin-top: 8px; }
+
+/* ── 작성일 · 전시관 이름 ── */
+.item-sub { color: var(--text-3); font-size: 12px; font-weight: 500; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.detail-place { display: flex; gap: 8px; align-items: baseline; margin: 10px 0 0; font-size: 16px; font-weight: 600; color: var(--text); }
+.detail-place span { flex: none; font-size: 13px; font-weight: 700; color: var(--text-3); }
+
+/* ── AI 자동 채우기 ── */
+.label-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.label-row .label { margin: 0; }
+.ai-fill { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 700; color: var(--blue); background: var(--blue-soft); padding: 6px 10px; border-radius: 10px; }
+.ai-fill svg { width: 16px; height: 16px; }
+.ai-fill:disabled { opacity: .5; }
+.ai-hint { margin: 10px 0 0; font-size: 14px; font-weight: 600; color: var(--blue); background: var(--blue-soft); padding: 10px 12px; border-radius: 12px; }
+
+/* ── 추가 방법 고르기 ── */
+.choice-list { display: flex; flex-direction: column; gap: 10px; }
+.choice { display: flex; gap: 14px; align-items: center; text-align: left; padding: 16px; border-radius: 18px; background: var(--bg-2); }
+.choice:active { background: var(--line); }
+.choice strong { display: block; font-size: 17px; }
+.choice small { display: block; color: var(--text-2); font-size: 14px; margin-top: 2px; line-height: 1.45; }
+.choice-ic { flex: none; width: 48px; height: 48px; border-radius: 14px; background: var(--blue); color: #fff; display: grid; place-items: center; }
+
+/* ── 여러 장 진행 목록 ── */
+.bulk-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.bulk-row { display: flex; align-items: center; gap: 12px; padding: 8px; border-radius: 14px; background: var(--bg-3); }
+.bulk-row img { width: 52px; height: 52px; object-fit: cover; border-radius: 10px; flex: none; }
+.bulk-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.bulk-main strong { font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bulk-main span { font-size: 13px; color: var(--text-3); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bulk-row.done .bulk-main span { color: var(--blue); }
+.bulk-row.fail .bulk-main span { color: var(--red); }
+.bulk-row.wait { opacity: .55; }
+.spin { flex: none; width: 20px; height: 20px; border-radius: 50%; border: 2.5px solid var(--line); border-top-color: var(--blue); animation: spin .7s linear infinite; }

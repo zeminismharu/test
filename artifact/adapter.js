@@ -12,7 +12,7 @@ const CAPS = (async () => {
 })();
 
 const CATEGORIES = ['exhibition', 'movie', 'etc'];
-const LIMITS = { title: 200, artist: 100, memo: 10000, source: 1000, tag: 40, tags: 30, description: 5000 };
+const LIMITS = { place: 100, title: 200, artist: 100, memo: 10000, source: 1000, tag: 40, tags: 30, description: 5000 };
 
 function fail(message, status = 400) {
   throw Object.assign(new Error(message), { status });
@@ -54,6 +54,7 @@ function cleanItem(body) {
     title: str(body.title, LIMITS.title),
     artist: str(body.artist, LIMITS.artist),
     category: CATEGORIES.includes(body.category) ? body.category : 'etc',
+    place: str(body.place, LIMITS.place),
     memo: str(body.memo, LIMITS.memo),
     source: str(body.source, LIMITS.source),
     tags,
@@ -64,7 +65,7 @@ function cleanItem(body) {
 function toItem(snap) {
   const d = snap.data();
   return {
-    id: snap.id, title: d.title || '', artist: d.artist || '', category: CATEGORIES.includes(d.category) ? d.category : 'etc', memo: d.memo || '', tags: d.tags || [],
+    id: snap.id, title: d.title || '', artist: d.artist || '', category: CATEGORIES.includes(d.category) ? d.category : 'etc', place: d.place || '', memo: d.memo || '', tags: d.tags || [],
     source: d.source || '', images: d.images || [], createdAt: d.createdAt || 0, updatedAt: d.updatedAt || 0,
   };
 }
@@ -89,6 +90,51 @@ function boardSummary(data) {
     todos: todos.length,
     done: todos.filter((t) => t.done).length,
     bg: typeof data.bg === 'string' ? data.bg : null,
+  };
+}
+
+// 같은 작가인지 비교할 때 띄어쓰기·기호·대소문자는 무시합니다.
+const artistKeyOf = (n) => String(n || '').toLowerCase().normalize('NFC').replace(/[\s.\-_·'"()]/g, '');
+function matchArtist(name, existing) {
+  const k = artistKeyOf(name);
+  if (!k) return '';
+  return existing.find((e) => artistKeyOf(e) === k) || String(name).trim().slice(0, LIMITS.artist);
+}
+const artistsOf = (items, exceptId) => [...new Set(items.filter((i) => i.id !== exceptId && i.artist).map((i) => i.artist))];
+
+async function analyzeWithAi(key, items) {
+  const sample = await need('sample');
+  const caps = await sample.limits().catch(() => null);
+  if (!caps?.images) fail('이 화면에서는 AI에게 사진을 보낼 수 없어요.', 503);
+  const blob = await (await fetch(`/_blob/${key}`)).blob();
+  const existing = artistsOf(items);
+  const prompt = [
+    '첨부한 사진은 사용자가 아이디어 아카이브에 모으는 레퍼런스입니다. 사진을 보고 아래 키를 가진 JSON 객체 하나로만 답하세요.',
+    '- category: "exhibition"(전시·미술관·갤러리·설치작품·작품 사진·전시 포스터), "movie"(영화 장면·스틸컷·영화 포스터·드라마), "etc"(그 외 전부) 중 하나',
+    '- title: 사진을 알아볼 수 있는 짧은 한국어 제목 (작품명·영화 제목을 알면 그것, 모르면 무엇이 보이는지)',
+    '- artist: 작가·감독·디자이너 이름. 확실할 때만, 모르면 ""',
+    '- place: 전시관·미술관·갤러리 이름(전시일 때), 사진에 글자로 보이거나 확실할 때만. 모르면 ""',
+    '- tags: 한국어 태그 2~5개 배열',
+    '- memo: 사진에서 눈여겨볼 점 한두 문장 (한국어)',
+    existing.length ? `사용자가 이미 저장한 작가: ${existing.slice(0, 300).join(', ')}` : '아직 저장된 작가가 없습니다.',
+    '위 목록에 같은 사람이 있으면(영어·한국어 표기가 달라도) 목록의 이름을 글자 그대로 쓰세요. 새 작가면 한국어 표기로. 추측하지 마세요.',
+  ].join('\n');
+  let o;
+  try {
+    o = await sample.json(prompt, { images: [blob], modelTier: 'default' });
+  } catch (err) {
+    if (err?.code === 'not_granted') fail('AI 사용을 허락하지 않아서 분석하지 못했어요.', 403);
+    if (err?.code === 'rate_limited') fail('AI를 너무 자주 불렀어요. 잠시 뒤 다시 해 주세요.', 429);
+    fail('사진을 분석하지 못했어요.', 502);
+  }
+  o = o && typeof o === 'object' ? o : {};
+  return {
+    category: CATEGORIES.includes(o.category) ? o.category : 'etc',
+    title: str(o.title, LIMITS.title),
+    artist: matchArtist(o.artist, existing),
+    place: str(o.place, LIMITS.place),
+    tags: (Array.isArray(o.tags) ? o.tags : []).map((t) => str(t, LIMITS.tag).replace(/^#/, '')).filter(Boolean).slice(0, 5),
+    memo: str(o.memo, 500),
   };
 }
 
@@ -142,6 +188,7 @@ export async function api(path, { method = 'GET', body, raw } = {}) {
     if (!id && m === 'POST') {
       const it = cleanItem(body || {});
       if (!it.title && !it.images.length && !it.memo) fail('제목, 사진, 메모 중 하나는 있어야 합니다.');
+      it.artist = matchArtist(it.artist, artistsOf(await allItems(db)));
       const now = Date.now();
       const ref = db.collection('items').doc();
       await ref.set({ ...it, createdAt: now, updatedAt: now }).catch(dbError);
@@ -154,6 +201,7 @@ export async function api(path, { method = 'GET', body, raw } = {}) {
     if (m === 'PUT') {
       const it = cleanItem(body || {});
       if (!it.title && !it.images.length && !it.memo) fail('제목, 사진, 메모 중 하나는 있어야 합니다.');
+      it.artist = matchArtist(it.artist, artistsOf(await allItems(db), id));
       const now = Date.now();
       await ref.set({ ...it, createdAt: prev.createdAt, updatedAt: now }).catch(dbError);
       const assets = (await CAPS).assets;
@@ -166,6 +214,12 @@ export async function api(path, { method = 'GET', body, raw } = {}) {
       await Promise.all(prev.images.map((k) => assets?.delete(k).catch(() => {})));
       return { ok: true };
     }
+  }
+
+  if (head === 'analyze' && m === 'POST') {
+    const key = String(body?.image || '');
+    if (!key) fail('사진이 없습니다.');
+    return { suggestion: await analyzeWithAi(key, await allItems(db)) };
   }
 
   if (head === 'images') {
