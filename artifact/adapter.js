@@ -278,6 +278,37 @@ export async function api(path, { method = 'GET', body, raw } = {}) {
     }
   }
 
+  if (head === 'venues' && id) {
+    const name = str(id, LIMITS.place);
+    const ref = db.collection('venues').doc(await artistKey('v:' + name));
+    if (!sub && m === 'GET') {
+      const snap = await ref.get().catch(dbError);
+      return { venue: snap.exists ? snap.data() : null };
+    }
+    if (sub === 'refresh' && m === 'POST') {
+      const sample = await need('sample');
+      const prompt = [
+        `"${name}" (전시관·미술관·갤러리, 한국일 가능성이 큼)에 대해 알고 있는 정보를 아래 JSON 하나로만 답하세요.`,
+        '{"name":"정식 이름","address":"주소","hours":"운영시간 (요일마다 다르면 줄바꿈)","closed":"휴관일","admission":"관람료","phone":"대표 전화","website":"공식 홈페이지","notes":"알아두면 좋은 점"}',
+        '확실히 아는 것만 쓰고, 모르면 "" 로 두세요. 지어내지 마세요. 지금 하는 전시는 넣지 마세요.',
+      ].join('\n');
+      let o;
+      try {
+        o = await sample.json(prompt, { modelTier: 'default' }).finally(() => recordAi());
+      } catch (err) {
+        if (err?.code === 'not_granted') fail('AI 사용을 허락하지 않아서 찾지 못했어요.', 403);
+        fail('전시관 정보를 찾지 못했어요.', 502);
+      }
+      const info = {};
+      for (const k of ['name', 'address', 'hours', 'closed', 'admission', 'phone', 'website']) info[k] = str(o?.[k], 300);
+      info.notes = [str(o?.notes, 400), 'Claude 판은 인터넷 검색을 못 해서 지금 하는 전시는 찾지 못해요. Cloudflare 사이트에서는 구글 검색으로 찾아 줍니다.'].filter(Boolean).join(' ');
+      info.exhibitions = [];
+      const venue = { name, info, sources: [], updatedAt: Date.now() };
+      await ref.set(venue).catch(dbError);
+      return { venue };
+    }
+  }
+
   if (head === 'stats' || head === 'settings') {
     const setRef = db.collection('meta').doc('settings');
     if (head === 'settings' && m === 'PUT') {

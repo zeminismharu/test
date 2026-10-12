@@ -11,6 +11,8 @@
  *   DELETE /api/images/:key               로그인. 올렸다가 취소한 사진 지우기
  *   GET    /img/:key                      공개. 사진 보기
  *   POST   /api/analyze  { image }        로그인. 사진을 보고 분류·제목·작가·태그 추천 (Gemini)
+ *   GET    /api/venues/:name              공개. 저장해 둔 전시관 정보 (주소·운영시간·휴관일·지금 하는 전시)
+ *   POST   /api/venues/:name/refresh      로그인. 구글 검색으로 전시관 정보를 새로 찾기 (Gemini)
  *   GET    /api/stats                     공개. 오늘·이번 달 AI 사용량과 하루 한도 (첫 화면 게임 카드)
  *   PUT    /api/settings                  로그인. { aiDailyTokens, aiDailyRequests } 하루 한도 정하기
  *   POST   /api/group    { photos }       로그인. 여러 장을 같이 보고 같은 관람(같은 전시·영화)끼리 묶기
@@ -94,6 +96,12 @@ async function route(request, env, parts) {
     return methodNotAllowed();
   }
 
+  if (head === 'venues' && id) {
+    if (!sub && m === 'GET') return getVenue(env, id);
+    if (sub === 'refresh' && m === 'POST') return (await requireLogin(request, env)) || refreshVenue(env, id);
+    return methodNotAllowed();
+  }
+
   if (head === 'stats' && !id) return m === 'GET' ? getStats(env) : methodNotAllowed();
   if (head === 'settings' && !id) {
     return m === 'PUT' ? (await requireLogin(request, env)) || saveSettings(request, env) : methodNotAllowed();
@@ -157,6 +165,12 @@ async function ensureSchema(env) {
       updated_at INTEGER NOT NULL
     )`),
     env.DB.prepare('CREATE TABLE IF NOT EXISTS ai_usage (day TEXT PRIMARY KEY, requests INTEGER NOT NULL DEFAULT 0, tokens INTEGER NOT NULL DEFAULT 0)'),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS venues (
+      name TEXT PRIMARY KEY,
+      info TEXT NOT NULL DEFAULT '{}',
+      sources TEXT NOT NULL DEFAULT '[]',
+      updated_at INTEGER NOT NULL
+    )`),
     env.DB.prepare('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)'),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS boards (
       id TEXT PRIMARY KEY,
@@ -640,6 +654,71 @@ async function geminiFetch(env, model, body) {
     return { error: res.status === 429 ? '구글 AI 사용량 한도에 걸렸습니다. 잠시 뒤 다시 해 주세요.' : msg, status: res.status };
   }
   return { data, res };
+}
+
+/* ─────────────── 전시관 정보 (팝업) ─────────────── */
+
+const VENUE_FIELDS = ['name', 'address', 'hours', 'closed', 'admission', 'phone', 'website', 'notes'];
+
+function cleanVenue(o) {
+  const out = {};
+  for (const k of VENUE_FIELDS) out[k] = String(o?.[k] ?? '').trim().slice(0, k === 'notes' ? 600 : 300);
+  out.exhibitions = (Array.isArray(o?.exhibitions) ? o.exhibitions : []).slice(0, 8).map((e) => ({
+    title: String(e?.title || '').trim().slice(0, 200),
+    period: String(e?.period || '').trim().slice(0, 100),
+    artist: String(e?.artist || '').trim().slice(0, 100),
+    desc: String(e?.desc || '').trim().slice(0, 300),
+  })).filter((e) => e.title);
+  return out;
+}
+
+async function getVenue(env, name) {
+  name = String(name).trim().slice(0, LIMITS.place);
+  const r = await env.DB.prepare('SELECT * FROM venues WHERE name = ?').bind(name).first();
+  if (!r) return json({ venue: null });
+  return json({ venue: { name, info: safeParse(r.info, {}), sources: safeParse(r.sources, []), updatedAt: r.updated_at } });
+}
+
+async function refreshVenue(env, name) {
+  name = String(name).trim().slice(0, LIMITS.place);
+  if (!name) return json({ error: '전시관 이름이 없습니다.' }, 400);
+  if (!env.GEMINI_API_KEY) return json({ error: '구글 AI 키(GEMINI_API_KEY)가 설정되지 않았습니다.' }, 503);
+  const today = kstDay();
+  const prompt = [
+    `"${name}" (전시관·미술관·갤러리, 한국일 가능성이 큼)의 정보를 구글 검색으로 확인해서 아래 JSON 하나로만 답하세요. 오늘은 ${today} 입니다.`,
+    '{',
+    '  "name": "정식 이름",',
+    '  "address": "도로명 주소",',
+    '  "hours": "운영시간 (요일마다 다르면 줄바꿈으로 나눠서, 예: 화~일 10:00~18:00\\n수·토 10:00~21:00)",',
+    '  "closed": "휴관일 (예: 매주 월요일, 1월 1일, 설·추석 당일)",',
+    '  "admission": "관람료 (전시마다 다르면 그렇다고)",',
+    '  "phone": "대표 전화",',
+    '  "website": "공식 홈페이지 주소",',
+    `  "exhibitions": [{"title":"전시 제목","period":"기간 (예: 2026.09.01 ~ 2026.12.31)","artist":"작가","desc":"한 줄 소개"}]  ← ${today} 기준 지금 하고 있거나 곧 시작하는 전시만`,
+    '  "notes": "알아두면 좋은 점 (예약 필요, 주차 등) 한두 문장"',
+    '}',
+    '중요: 검색으로 확인한 내용만 쓰세요. 확인하지 못한 값은 빈 문자열 "" 로 두고, 지어내지 마세요. 끝난 전시는 넣지 마세요.',
+  ].join('\n');
+  const model = env.GEMINI_MODEL || DEFAULT_MODEL;
+  const attempts = [model, ...(model !== FALLBACK_MODEL ? [FALLBACK_MODEL] : [])];
+  let lastError = '';
+  for (const mdl of attempts) {
+    // 구글 검색 도구와 JSON 모양 지정은 같이 쓸 수 없어서, 글로 받은 뒤 JSON 부분만 읽습니다.
+    const res = await callGemini(env, mdl, prompt, true);
+    if (res.text) {
+      const parsed = parseJsonLoose(res.text);
+      if (!parsed) { lastError = 'AI 답을 읽지 못했습니다.'; continue; }
+      const info = cleanVenue(parsed);
+      const now = Date.now();
+      await env.DB.prepare(`INSERT INTO venues (name, info, sources, updated_at) VALUES (?, ?, ?, ?)
+        ON CONFLICT(name) DO UPDATE SET info = excluded.info, sources = excluded.sources, updated_at = excluded.updated_at`)
+        .bind(name, JSON.stringify(info), JSON.stringify(res.sources || []), now).run();
+      return json({ venue: { name, info, sources: res.sources || [], updatedAt: now } });
+    }
+    lastError = res.error;
+    if (res.status === 429 || (res.status === 400 && /API key/i.test(res.error))) break;
+  }
+  return json({ error: `전시관 정보를 찾지 못했습니다. ${lastError}`.trim() }, 502);
 }
 
 /* ─────────────── AI 사용량 · 설정 (첫 화면 게임 카드) ─────────────── */

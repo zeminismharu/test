@@ -491,6 +491,38 @@ textarea.field { min-height: 120px; line-height: 1.6; }
 .energy-table span { color: var(--text-2); font-weight: 600; }
 .energy-table b { font-variant-numeric: tabular-nums; }
 
+/* ── 전시관 정보 팝업 ── */
+.venue-row { display: flex; gap: 6px; align-items: center; overflow-x: auto; scrollbar-width: none; margin: -4px 0 14px; padding-bottom: 2px; }
+.venue-row::-webkit-scrollbar { display: none; }
+.venue-row-label { flex: none; font-size: 13px; font-weight: 700; color: var(--text-3); margin-right: 2px; }
+.venue-chip { flex: none; display: inline-flex; align-items: center; gap: 4px; height: 34px; padding: 0 12px 0 8px; border-radius: 17px; background: var(--blue-soft); color: var(--blue); font-size: 14px; font-weight: 700; white-space: nowrap; }
+.venue-chip svg { width: 16px; height: 16px; }
+.venue-chip b { font-size: 12px; opacity: .75; margin-left: 2px; }
+.venue-link { width: 100%; text-align: left; padding: 12px 14px; margin-top: 12px; border-radius: 14px; background: var(--blue-soft); color: var(--text); flex-wrap: wrap; align-items: center; }
+.venue-link svg { width: 16px; height: 16px; color: var(--blue); }
+.venue-link em { display: inline-flex; align-items: center; gap: 2px; font-style: normal; font-size: 13px; font-weight: 700; color: var(--blue); margin-left: auto; }
+.venue-title { margin-bottom: 4px !important; }
+.venue-mine { margin: 0 0 14px; color: var(--text-2); font-size: 14px; }
+.venue-mine b { color: var(--blue); }
+.venue-maps { display: flex; gap: 8px; margin-bottom: 18px; }
+.venue-maps .btn { flex: 1; text-decoration: none; gap: 4px; }
+.venue-maps svg { width: 16px; height: 16px; }
+.venue-loading { display: flex; align-items: center; gap: 10px; padding: 24px 4px; color: var(--text-2); font-weight: 600; font-size: 15px; }
+.vinfo { display: flex; flex-direction: column; border-radius: 16px; background: var(--bg-2); padding: 4px 16px; }
+.vrow { display: grid; grid-template-columns: 72px 1fr; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); font-size: 15px; }
+.vrow:last-child { border-bottom: 0; }
+.vrow > span { color: var(--text-3); font-weight: 700; font-size: 14px; }
+.vrow > div { min-width: 0; word-break: break-word; font-weight: 600; }
+.vrow a { color: var(--blue); }
+.pre { white-space: pre-line; }
+.vex { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.vex li { padding: 14px 16px; border-radius: 16px; border: 1px solid var(--line); }
+.vex strong { display: block; font-size: 16px; }
+.vex span { display: block; color: var(--blue); font-size: 13px; font-weight: 700; margin-top: 2px; }
+.vex p { margin: 6px 0 0; color: var(--text-2); font-size: 14px; }
+.vnotes { margin: 16px 0 0; padding: 12px 14px; border-radius: 12px; background: var(--bg-2); color: var(--text-2); font-size: 14px; }
+.venue-foot { margin: 16px 0 12px; color: var(--text-3); font-size: 13px; line-height: 1.6; }
+
 /* 관리 화면 — 작업 계획 보드 */
 
 .back-link { display: inline-flex; align-items: center; gap: 2px; color: var(--text-2); font-weight: 600; font-size: 15px; text-decoration: none; }
@@ -687,6 +719,7 @@ input[type=range]::-moz-range-thumb { width: 24px; height: 24px; border-radius: 
     <section id="view-home" class="view">
       <section class="hero" id="hero" aria-label="내 전시 레벨"></section>
       <div class="cat-tabs" id="catTabs" role="tablist" aria-label="분류"></div>
+      <div class="venue-row" id="venueRow" hidden></div>
       <label class="search">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
         <input id="search" type="search" placeholder="제목, 작가, 전시관, 메모, 태그로 찾기" autocomplete="off" />
@@ -1174,6 +1207,37 @@ async function api(path, { method = 'GET', body, raw } = {}) {
     }
   }
 
+  if (head === 'venues' && id) {
+    const name = str(id, LIMITS.place);
+    const ref = db.collection('venues').doc(await artistKey('v:' + name));
+    if (!sub && m === 'GET') {
+      const snap = await ref.get().catch(dbError);
+      return { venue: snap.exists ? snap.data() : null };
+    }
+    if (sub === 'refresh' && m === 'POST') {
+      const sample = await need('sample');
+      const prompt = [
+        `"${name}" (전시관·미술관·갤러리, 한국일 가능성이 큼)에 대해 알고 있는 정보를 아래 JSON 하나로만 답하세요.`,
+        '{"name":"정식 이름","address":"주소","hours":"운영시간 (요일마다 다르면 줄바꿈)","closed":"휴관일","admission":"관람료","phone":"대표 전화","website":"공식 홈페이지","notes":"알아두면 좋은 점"}',
+        '확실히 아는 것만 쓰고, 모르면 "" 로 두세요. 지어내지 마세요. 지금 하는 전시는 넣지 마세요.',
+      ].join('\n');
+      let o;
+      try {
+        o = await sample.json(prompt, { modelTier: 'default' }).finally(() => recordAi());
+      } catch (err) {
+        if (err?.code === 'not_granted') fail('AI 사용을 허락하지 않아서 찾지 못했어요.', 403);
+        fail('전시관 정보를 찾지 못했어요.', 502);
+      }
+      const info = {};
+      for (const k of ['name', 'address', 'hours', 'closed', 'admission', 'phone', 'website']) info[k] = str(o?.[k], 300);
+      info.notes = [str(o?.notes, 400), 'Claude 판은 인터넷 검색을 못 해서 지금 하는 전시는 찾지 못해요. Cloudflare 사이트에서는 구글 검색으로 찾아 줍니다.'].filter(Boolean).join(' ');
+      info.exhibitions = [];
+      const venue = { name, info, sources: [], updatedAt: Date.now() };
+      await ref.set(venue).catch(dbError);
+      return { venue };
+    }
+  }
+
   if (head === 'stats' || head === 'settings') {
     const setRef = db.collection('meta').doc('settings');
     if (head === 'settings' && m === 'PUT') {
@@ -1422,6 +1486,7 @@ if (document.readyState !== 'loading') {
 const ICON = {
   x: '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>',
   chevron: '<svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>',
+  pin: '<svg viewBox="0 0 24 24"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>',
   spark: '<svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>',
   stack: '<svg viewBox="0 0 24 24"><rect x="7" y="7" width="13" height="13" rx="3"/><path d="M4 16V6a2 2 0 0 1 2-2h10"/></svg>',
   pencil: '<svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>',
@@ -2807,13 +2872,103 @@ function openEnergy() {
   };
 }
 
+/* ─────────────── 전시관 정보 팝업: 위치 · 운영시간 · 휴관일 · 지금 하는 전시 ─────────────── */
+
+const VENUE_STALE = 7 * 24 * 3600 * 1000; // 7일 지나면 새로 찾기
+
+async function openVenue(name) {
+  const mine = state.items.filter((i) => i.place === name).sort((a, b) => b.createdAt - a.createdAt);
+  const head = `
+    <h2 class="venue-title" id="vTitle">${esc(name)}</h2>
+    <p class="venue-mine">${mine.length ? `내가 다녀온 기록 <b>${mine.length}번</b> · 마지막 ${fmtDate(mine[0].createdAt)}` : '아직 기록이 없어요'}</p>
+    <div class="venue-maps">
+      <a class="btn small ghost" href="https://map.naver.com/p/search/${encodeURIComponent(name)}" target="_blank" rel="noopener noreferrer">${ICON.pin}네이버 지도</a>
+      <a class="btn small ghost" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name)}" target="_blank" rel="noopener noreferrer">${ICON.pin}구글 지도</a>
+    </div>`;
+  openSheet(`${head}<div id="venueBody"><div class="venue-loading"><i class="spin"></i>저장해 둔 정보를 불러오는 중…</div></div>`);
+
+  const show = (v) => {
+    const body = $('#venueBody');
+    if (!body) return;
+    if (!v) {
+      body.innerHTML = `<p class="hint" style="margin:16px 0">아직 찾아 둔 정보가 없어요.</p>
+        <button class="btn block" id="vRefresh" type="button">${ICON.spark}구글에서 정보 찾기</button>`;
+      $('#vRefresh').onclick = () => refresh();
+      return;
+    }
+    const i = v.info || {};
+    if (i.name && $('#vTitle')) $('#vTitle').textContent = i.name;
+    const row = (label, val, html) => (val ? `<div class="vrow"><span>${label}</span><div>${html || esc(val)}</div></div>` : '');
+    const site = /^https?:\/\//i.test(i.website) ? i.website : i.website ? `https://${i.website}` : '';
+    body.innerHTML = `
+      <div class="vinfo">
+        ${row('주소', i.address)}
+        ${row('운영시간', i.hours, `<span class="pre">${esc(i.hours)}</span>`)}
+        ${row('휴관일', i.closed)}
+        ${row('관람료', i.admission)}
+        ${row('전화', i.phone)}
+        ${row('홈페이지', i.website, `<a href="${esc(site)}" target="_blank" rel="noopener noreferrer">${esc(i.website)}</a>`)}
+      </div>
+      ${!i.address && !i.hours && !i.closed ? '<p class="hint">주소·운영시간을 확인하지 못했어요. 지도에서 찾아 주세요.</p>' : ''}
+      <h3 class="section-title" style="margin:24px 0 10px">지금 하는 전시</h3>
+      ${(i.exhibitions || []).length ? `<ul class="vex">${i.exhibitions.map((e) => `<li>
+          <strong>${esc(e.title)}</strong>
+          <span>${esc([e.period, e.artist].filter(Boolean).join(' · '))}</span>
+          ${e.desc ? `<p>${esc(e.desc)}</p>` : ''}
+        </li>`).join('')}</ul>` : '<p class="hint">진행 중인 전시를 확인하지 못했어요. 홈페이지에서 확인해 주세요.</p>'}
+      ${i.notes ? `<p class="vnotes">${esc(i.notes)}</p>` : ''}
+      ${(v.sources || []).length ? `<ul class="sources">${v.sources.map((s) => `<li><a href="${esc(s.uri)}" target="_blank" rel="noopener noreferrer">${esc(s.title)}</a></li>`).join('')}</ul>` : ''}
+      <p class="venue-foot">${fmtDate(v.updatedAt)}에 AI가 ${v.sources?.length ? '구글 검색으로 ' : ''}정리한 정보예요. 틀릴 수 있으니 가기 전에 홈페이지에서 꼭 확인하세요.</p>
+      <button class="btn ghost block" id="vRefresh" type="button">${ICON.spark}정보 새로 찾기</button>`;
+    $('#vRefresh').onclick = () => refresh();
+  };
+
+  const refresh = async () => {
+    if (!state.loggedIn) return openLogin(() => openVenue(name));
+    const body = $('#venueBody');
+    if (body) body.innerHTML = '<div class="venue-loading"><i class="spin"></i>구글에서 운영시간·휴관일·지금 하는 전시를 찾는 중… (20초쯤 걸려요)</div>';
+    try {
+      const { venue } = await api(`/api/venues/${encodeURIComponent(name)}/refresh`, { method: 'POST' });
+      loadStats();
+      show(venue);
+    } catch (err) {
+      toast(err.message);
+      const { venue } = await api(`/api/venues/${encodeURIComponent(name)}`).catch(() => ({ venue: null }));
+      show(venue);
+    }
+  };
+
+  try {
+    const { venue } = await api(`/api/venues/${encodeURIComponent(name)}`);
+    if ((!venue || Date.now() - venue.updatedAt > VENUE_STALE) && state.loggedIn && state.stats?.ai?.configured !== false) {
+      show(venue);
+      refresh();
+    } else show(venue);
+  } catch (err) {
+    show(null);
+    toast(err.message);
+  }
+}
+
 function setCat(c) {
   state.cat = c;
   renderCatTabs();
   renderGrid();
 }
 
+// 전시관 탭에서는 다녀온 전시관을 단추로 보여주고, 누르면 전시관 정보 팝업이 뜹니다.
+function renderVenueRow() {
+  const row = $('#venueRow');
+  const count = new Map();
+  state.items.filter((i) => i.category === 'exhibition' && i.place).forEach((i) => count.set(i.place, (count.get(i.place) || 0) + 1));
+  row.hidden = state.cat !== 'exhibition' || !count.size;
+  row.innerHTML = `<span class="venue-row-label">다녀온 전시관</span>` + [...count.entries()].sort((a, b) => b[1] - a[1])
+    .map(([n, c]) => `<button class="venue-chip" data-v="${esc(n)}" type="button">${ICON.pin}${esc(n)}<b>${c}</b></button>`).join('');
+  row.querySelectorAll('.venue-chip').forEach((b) => (b.onclick = () => openVenue(b.dataset.v)));
+}
+
 function renderCatTabs() {
+  renderVenueRow();
   const box = $('#catTabs');
   const n = (c) => state.items.filter((it) => !c || it.category === c).length;
   box.innerHTML = [['', '전체'], ...CATS].map(([k, label], i) =>
@@ -3040,7 +3195,9 @@ function openDetail(id) {
     <span class="detail-cat">${catLabel(it.category)}</span>
     ${it.title ? `<h2 class="detail-title">${esc(it.title)}</h2>` : '<div style="height:8px"></div>'}
     ${it.artist ? `<button class="detail-artist" id="dArtist">${esc(it.artist)} ${ICON.chevron}</button>` : ''}
-    ${it.place ? `<p class="detail-place"><span>${PLACE[it.category]?.[0] || '장소'}</span>${esc(it.place)}</p>` : ''}
+    ${it.place ? (it.category === 'exhibition'
+      ? `<button class="detail-place venue-link" id="dPlace" type="button"><span>${PLACE.exhibition[0]}</span>${ICON.pin}${esc(it.place)} <em>운영시간 · 지금 하는 전시 ${ICON.chevron}</em></button>`
+      : `<p class="detail-place"><span>${PLACE[it.category]?.[0] || '장소'}</span>${esc(it.place)}</p>`) : ''}
     ${it.memo ? `<p class="detail-memo">${esc(it.memo)}</p>` : ''}
     ${it.tags.length ? `<div class="detail-tags">${it.tags.map((t) => `<button data-tag="${esc(t)}">#${esc(t)}</button>`).join('')}</div>` : ''}
     ${it.source ? (/^https?:\/\//i.test(it.source)
@@ -3060,6 +3217,7 @@ function openDetail(id) {
       $('#dots').textContent = `${Math.min(i + 1, imgs.length)} / ${imgs.length}`;
     }, { passive: true });
   }
+  if ($('#dPlace')) $('#dPlace').onclick = () => openVenue(it.place);
   if ($('#dArtist')) $('#dArtist').onclick = async () => { await closeSheet(); go(`#/artist/${encodeURIComponent(it.artist)}`); };
   sheetBody().querySelectorAll('[data-tag]').forEach((b) => (b.onclick = async () => {
     await closeSheet();

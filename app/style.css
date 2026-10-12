@@ -468,3 +468,35 @@ textarea.field { min-height: 120px; line-height: 1.6; }
 .energy-table div { display: flex; justify-content: space-between; gap: 12px; padding: 14px 16px; border-radius: 14px; background: var(--bg-2); }
 .energy-table span { color: var(--text-2); font-weight: 600; }
 .energy-table b { font-variant-numeric: tabular-nums; }
+
+/* ── 전시관 정보 팝업 ── */
+.venue-row { display: flex; gap: 6px; align-items: center; overflow-x: auto; scrollbar-width: none; margin: -4px 0 14px; padding-bottom: 2px; }
+.venue-row::-webkit-scrollbar { display: none; }
+.venue-row-label { flex: none; font-size: 13px; font-weight: 700; color: var(--text-3); margin-right: 2px; }
+.venue-chip { flex: none; display: inline-flex; align-items: center; gap: 4px; height: 34px; padding: 0 12px 0 8px; border-radius: 17px; background: var(--blue-soft); color: var(--blue); font-size: 14px; font-weight: 700; white-space: nowrap; }
+.venue-chip svg { width: 16px; height: 16px; }
+.venue-chip b { font-size: 12px; opacity: .75; margin-left: 2px; }
+.venue-link { width: 100%; text-align: left; padding: 12px 14px; margin-top: 12px; border-radius: 14px; background: var(--blue-soft); color: var(--text); flex-wrap: wrap; align-items: center; }
+.venue-link svg { width: 16px; height: 16px; color: var(--blue); }
+.venue-link em { display: inline-flex; align-items: center; gap: 2px; font-style: normal; font-size: 13px; font-weight: 700; color: var(--blue); margin-left: auto; }
+.venue-title { margin-bottom: 4px !important; }
+.venue-mine { margin: 0 0 14px; color: var(--text-2); font-size: 14px; }
+.venue-mine b { color: var(--blue); }
+.venue-maps { display: flex; gap: 8px; margin-bottom: 18px; }
+.venue-maps .btn { flex: 1; text-decoration: none; gap: 4px; }
+.venue-maps svg { width: 16px; height: 16px; }
+.venue-loading { display: flex; align-items: center; gap: 10px; padding: 24px 4px; color: var(--text-2); font-weight: 600; font-size: 15px; }
+.vinfo { display: flex; flex-direction: column; border-radius: 16px; background: var(--bg-2); padding: 4px 16px; }
+.vrow { display: grid; grid-template-columns: 72px 1fr; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); font-size: 15px; }
+.vrow:last-child { border-bottom: 0; }
+.vrow > span { color: var(--text-3); font-weight: 700; font-size: 14px; }
+.vrow > div { min-width: 0; word-break: break-word; font-weight: 600; }
+.vrow a { color: var(--blue); }
+.pre { white-space: pre-line; }
+.vex { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.vex li { padding: 14px 16px; border-radius: 16px; border: 1px solid var(--line); }
+.vex strong { display: block; font-size: 16px; }
+.vex span { display: block; color: var(--blue); font-size: 13px; font-weight: 700; margin-top: 2px; }
+.vex p { margin: 6px 0 0; color: var(--text-2); font-size: 14px; }
+.vnotes { margin: 16px 0 0; padding: 12px 14px; border-radius: 12px; background: var(--bg-2); color: var(--text-2); font-size: 14px; }
+.venue-foot { margin: 16px 0 12px; color: var(--text-3); font-size: 13px; line-height: 1.6; }
