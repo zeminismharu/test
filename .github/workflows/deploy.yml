@@ -1,0 +1,121 @@
+# 레퍼런스(아이디어 아카이브) 배포
+#
+# 이사청소 사이트와 같은 방식(GitHub Actions → Cloudflare Pages)입니다. 단추를 눌렀을 때만 돕니다.
+#
+# 쓰는 법 : GitHub 저장소 → Actions 탭 → 왼쪽에서 "사이트 배포 (레퍼런스)" 선택
+#           → 오른쪽 "Run workflow" 단추 (휴대폰에서도 됩니다)
+#
+# 주소 : https://zeminism-archive.pages.dev
+#        (Cloudflare 주소에는 밑줄 _ 을 쓸 수 없어서 - 로 바꿨습니다)
+#
+# 처음 한 번은 이 저장소 Settings → Secrets and variables → Actions 에 아래 4개를 넣어야 합니다.
+#   CLOUDFLARE_API_TOKEN   이사 사이트에서 쓰던 것과 같은 값 (D1·KV 편집 권한이 있어야 함 — README 참고)
+#   CLOUDFLARE_ACCOUNT_ID  이사 사이트에서 쓰던 것과 같은 값
+#   ADMIN_PASSWORD         사이트에서 추가·수정·관리할 때 쓸 비밀번호 (새로 정하기)
+#   GEMINI_API_KEY         구글 AI Studio 에서 받은 키 (작가 설명용)
+#
+# 데이터베이스(D1)와 사진 저장소(KV)는 없으면 이 작업이 알아서 만들고 사이트에 연결합니다.
+
+name: 사이트 배포 (레퍼런스)
+
+on:
+  workflow_dispatch:        # 단추를 눌렀을 때만 돕니다
+
+env:
+  PROJECT: zeminism-archive
+  DB_NAME: zeminism-archive-db
+  KV_NAME: zeminism-archive-images
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: 코드 가져오기
+        uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: 비밀값 확인
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::error::CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID 비밀값이 이 저장소에 없습니다. README 의 '처음 한 번' 을 따라 넣어 주세요."
+            exit 1
+          fi
+          npm install --no-save --no-audit --no-fund wrangler@4 >/dev/null
+          npx wrangler --version
+
+      # 처음 한 번만 실제로 만들어지고, 이미 있으면 그냥 넘어갑니다.
+      - name: Cloudflare 프로젝트 · 데이터베이스 · 사진 저장소 준비
+        run: |
+          set -euo pipefail
+          npx wrangler pages project create "$PROJECT" --production-branch=main || echo "(프로젝트가 이미 있습니다)"
+
+          DB_ID=$(npx wrangler d1 list --json | sed -n '/^\[/,$p' | jq -r --arg n "$DB_NAME" '.[] | select(.name==$n) | .uuid' | head -1)
+          if [ -z "$DB_ID" ]; then
+            npx wrangler d1 create "$DB_NAME"
+            DB_ID=$(npx wrangler d1 list --json | sed -n '/^\[/,$p' | jq -r --arg n "$DB_NAME" '.[] | select(.name==$n) | .uuid' | head -1)
+          fi
+          [ -n "$DB_ID" ] || { echo "::error::D1 데이터베이스를 만들거나 찾지 못했습니다. API 토큰에 'D1 편집' 권한이 있는지 확인해 주세요."; exit 1; }
+
+          find_kv() { npx wrangler kv namespace list | sed -n '/^\[/,$p' | jq -r --arg n "$KV_NAME" '.[] | select(.title==$n or (.title|endswith("-"+$n))) | .id' | head -1; }
+          KV_ID=$(find_kv)
+          if [ -z "$KV_ID" ]; then
+            npx wrangler kv namespace create "$KV_NAME"
+            KV_ID=$(find_kv)
+          fi
+          [ -n "$KV_ID" ] || { echo "::error::KV 사진 저장소를 만들거나 찾지 못했습니다. API 토큰에 'Workers KV 편집' 권한이 있는지 확인해 주세요."; exit 1; }
+
+          # 사이트에 데이터베이스(DB)와 사진 저장소(IMAGES)를 연결합니다. (다음 배포부터 적용)
+          BODY=$(jq -n --arg db "$DB_ID" --arg kv "$KV_ID" '{
+            deployment_configs: {
+              production: {
+                compatibility_date: "2026-10-01",
+                d1_databases: { DB: { id: $db } },
+                kv_namespaces: { IMAGES: { namespace_id: $kv } }
+              }
+            }
+          }')
+          RES=$(curl -sS -X PATCH \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/$PROJECT" \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json" \
+            --data "$BODY")
+          if [ "$(echo "$RES" | jq -r '.success')" != "true" ]; then
+            echo "$RES" | jq '.errors'
+            echo "::error::사이트에 DB·사진 저장소를 연결하지 못했습니다. API 토큰에 'Cloudflare Pages 편집' 권한이 있는지 확인해 주세요."
+            exit 1
+          fi
+          echo "연결됨 → DB: $DB_ID / IMAGES: $KV_ID"
+          echo "$RES" | jq '.result.deployment_configs.production | {d1_databases, kv_namespaces}'
+
+      - name: 비밀번호 · 구글 AI 키 넣기
+        env:
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+        run: |
+          put() {
+            if [ -n "$2" ]; then
+              printf '%s' "$2" | npx wrangler pages secret put "$1" --project-name="$PROJECT"
+            else
+              echo "::warning::$1 비밀값이 없어 건너뜁니다. (Cloudflare 화면에서 직접 넣었다면 괜찮습니다)"
+            fi
+          }
+          put ADMIN_PASSWORD "$ADMIN_PASSWORD"
+          put GEMINI_API_KEY "$GEMINI_API_KEY"
+          if [ -n "$GEMINI_MODEL" ]; then put GEMINI_MODEL "$GEMINI_MODEL"; fi
+
+      - name: 올라갈 파일 확인
+        run: find app -type f | sort
+
+      - name: Cloudflare Pages 에 올리기
+        run: npx wrangler pages deploy app --project-name="$PROJECT" --branch=main --commit-dirty=true
+
+      - name: 주소 안내
+        run: |
+          echo "✅ 배포 끝: https://$PROJECT.pages.dev"
+          echo "✅ 관리(작업 계획): https://$PROJECT.pages.dev/admin"
