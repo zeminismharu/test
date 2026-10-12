@@ -20,6 +20,10 @@ jobs:
           for (const i of [...items].sort((a, b) => (a.visitedAt || a.createdAt) - (b.visitedAt || b.createdAt))) {
             console.log([i.category, JSON.stringify(i.title), '장소=' + JSON.stringify(i.place || ''), '관람=' + (i.visitedAt ? day(i.visitedAt) : '-'), '올림=' + day(i.createdAt), '사진=' + i.images.length].join(' | '));
           }
+          const { artists = [] } = await get('/api/artists').catch(() => ({}));
+          console.log('\n작가');
+          for (const a of artists) console.log([JSON.stringify(a.name), a.count + '개', '소개=' + JSON.stringify((a.description || '').slice(0, 60)), '대표작=' + (a.works || []).length].join(' | '));
+          for (const i of items) if (i.artist) console.log('  작가항목', JSON.stringify(i.artist), JSON.stringify(i.title), JSON.stringify(i.place), JSON.stringify((i.memo || '').slice(0, 150)), JSON.stringify(i.tags));
           console.log('\n가볼 곳');
           for (const t of todo) console.log([t.name, t.area, t.done ? '체크' : '', t.visited ? 'visited=' + t.visited : ''].join(' | '), JSON.stringify(Object.keys(t)));
           JS
