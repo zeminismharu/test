@@ -1,0 +1,27 @@
+name: 작가 소개·대표작 자동 채우기
+
+# 매일 새벽(한국 시간 4시 47분) 소개·대표작이 비어 있는 작가를 한 명씩 채웁니다.
+# 구글 무료 한도(분당 5회·하루 20회)를 지키려고 한 명마다 16초 쉬고, 한 번에 최대 10명까지만 합니다.
+on:
+  schedule:
+    - cron: '47 19 * * *'
+  workflow_dispatch:
+
+jobs:
+  fill:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 비어 있는 작가 채우기
+        env:
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+        run: |
+          B=https://zeminism-archive.pages.dev
+          # 로그인 (비밀번호가 없으면 열린 모드라 그냥 통과)
+          jq -n --arg p "$ADMIN_PASSWORD" '{password:$p}' | curl -sS -c jar -H 'content-type: application/json' -d @- "$B/api/login" -o /dev/null -w "로그인 %{http_code}\n"
+          for n in $(seq 1 10); do
+            code=$(curl -sS -b jar -X POST "$B/api/artists/auto" -o out.json -w "%{http_code}")
+            echo "[$n] $code $(cat out.json)"
+            if [ "$code" != "200" ]; then echo "멈춤 (한도나 오류 — 내일 이어서 해요)"; break; fi
+            if [ "$(jq -r '.remaining' out.json)" = "0" ] || [ "$(jq -r '.done' out.json)" = "null" ]; then echo "다 채웠어요"; break; fi
+            sleep 16
+          done

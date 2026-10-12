@@ -58,6 +58,7 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
         <input id="artistSearch" type="search" placeholder="작가 이름 찾기" autocomplete="off" />
       </label>
+      <div class="auto-box" id="autoBox"></div>
       <ul class="list" id="artistList"></ul>
       <div class="empty" id="artistEmpty" hidden></div>
     </section>
@@ -101,6 +102,7 @@
           </div>
         </div>
         <p class="ai-text" id="aiText"></p>
+        <div class="works" id="aiWorks"></div>
         <textarea class="field ai-edit" id="aiEdit" rows="6" hidden></textarea>
         <div class="ai-edit-actions" id="aiEditActions" hidden>
           <button class="btn ghost small" id="aiEditCancel" type="button">취소</button>

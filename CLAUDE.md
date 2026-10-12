@@ -25,6 +25,10 @@
 - 실패하면 연달아 다른 방식으로 다시 묻지 않기 (503 뒤 연속 요청으로 429 났던 일). 503 은 2초·5초 기다렸다 같은 모델로, 429 는 다른 모델로.
 - 관람일(`items.visited_at`): EXIF 찍은 날로 자동 채움. 방문 횟수·영화 연도는 관람일 → 없으면 올린 날(createdAt).
 - 첫 화면 게임 = 다마고치 화분 (2026-10-12 사장님 요청 "식물이 자라나는 것, 다마고치처럼"). 전시 방문 수로 자람(LEVELS: 씨앗 → 큰 나무), 기분은 마지막 전시가 며칠 전인지(7일·21일·45일). 물 주기는 서버(settings 표 waterLast·waterStreak·waterTotal, 한국 날짜)에 저장해 어느 기기에서나 같음(2026-10-12 사장님 요청), 로그인해야 줄 수 있음, 기분만 한 단계 올림, 자라는 건 전시뿐. 픽셀 그림은 app.js plantSVG, 전역 svg stroke 가 번지지 않게 .pixel-plant 에 stroke:none.
+- 방문 횟수 묶기(2026-10-12 고침): 같은 전시관이면 '같은 날 올림' 또는 '관람일 같음' 중 하나만 맞아도 한 번 (사진 하나만 EXIF 날짜가 달라 국제갤러리가 2번으로 셌던 일). 다녀온 날 = 묶인 것 중 가장 이른 관람일.
+- 작가 대표작 2점(2026-10-12 사장님 요청, 그림 파일로): 작가 소개 만들 때 같은 Gemini 한 번에 `WORKS=[…]` 줄로 받음 → 그림은 ① AI 주소 ② 작품 페이지 og:image ③ 위키미디어 공용(파일 이름에 작가·작품 이름 있는 것만) 순으로 찾아 KV 에 저장. artists.works (NULL = 아직 안 찾음).
+- 자동화: 새 작가가 저장되면 ctx.waitUntil 로 바로 찾고(queueArtist), 매일 한국 4:47 `.github/workflows/auto-artists.yml` 이 비어 있는 작가를 16초 간격 최대 10명 채움(`POST /api/artists/auto`, 저장소 비밀값 ADMIN_PASSWORD 로 로그인). 직접 쓴 소개는 덮어쓰지 않음. 못 찾은 작가는 30일 뒤 다시.
+- 데이터 점검: `.github/workflows/check.yml` (공개 API 읽기만, 항목·가볼 곳을 로그로). 이 작업 환경에서는 pages.dev 에 직접 못 들어가서 만듦.
 - 영화 연도별 기록: 같은 해 같은 제목은 1편. 칭호는 app.js MOVIE_TITLES.
 - 백업(`/api/export`, `/api/import`)은 표 내용만. 사진(KV)은 들어가지 않음.
 - 표는 `_worker.js` 의 ensureSchema 가 자동으로 만듭니다. 칸을 추가할 때는 ALTER 를 따로 넣어야 합니다.

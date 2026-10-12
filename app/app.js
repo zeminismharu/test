@@ -307,33 +307,43 @@ const seenAt = (i) => i.visitedAt || i.createdAt;
 const ymd = (ms) => { const d = new Date(ms); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 const toDayMs = (v) => (v ? Date.parse(`${v}T12:00:00`) || 0 : 0);
 
-// 방문 횟수 세기: 같은 전시관에 같은 날 올린 항목들은 한 번 다녀온 것으로 칩니다.
-// 전시관 이름이 없는 항목은 그날 다녀온 전시관(가장 많이 올린 곳)에 붙이고, 그날 전시관이 하나도 없으면 그날 하루를 한 번으로 칩니다.
-// (사진을 여러 항목으로 나눠 올려도 방문 횟수가 부풀지 않도록)
+// 방문 횟수 세기: 같은 전시관을 '같은 날 올렸거나' '관람일이 같은' 항목들은 한 번 다녀온 것으로 칩니다.
+// (사진 하나만 찍은 날짜가 남아 관람일이 하루 다르게 잡혀도, 같은 날 올린 같은 전시관이면 한 번 — 2026-10-12 국제갤러리 2번으로 셌던 일)
+// 전시관 이름이 없는 항목은 그날 다녀온 전시관(항목이 가장 많은 곳)에 붙이고, 그날 전시관이 하나도 없으면 그날 하루를 한 번으로 칩니다.
 function uniqueVisits(items) {
-  const byDay = new Map();
+  const byKey = new Map();
+  const groups = [];
+  const find = (g) => { while (g.into) g = g.into; return g; };
+  const join = (a, b) => {
+    a = find(a); b = find(b);
+    if (a !== b) { b.into = a; a.items.push(...b.items); b.items = []; }
+    return a;
+  };
+  const daysOf = (i) => [fmtDate(i.createdAt), fmtDate(seenAt(i))];
   for (const i of items) {
-    const day = fmtDate(seenAt(i));
-    if (!byDay.has(day)) byDay.set(day, []);
-    byDay.get(day).push(i);
+    const k = keyOf(i.place);
+    if (!k) continue;
+    const [up, seen] = daysOf(i);
+    const keys = [`${k}|u${up}`, `${k}|s${seen}`];
+    let g = null;
+    for (const key of keys) { const h = byKey.get(key); if (h) g = g ? join(g, h) : find(h); }
+    if (!g) { g = { place: i.place, items: [] }; groups.push(g); }
+    g.items.push(i);
+    for (const key of keys) byKey.set(key, g);
   }
-  const out = [];
-  for (const [day, list] of byDay) {
-    const venues = new Map();
-    const loose = [];
-    for (const i of list) {
-      const k = keyOf(i.place);
-      if (!k) { loose.push(i); continue; }
-      if (!venues.has(k)) venues.set(k, { key: `${k}|${day}`, place: i.place, at: 0, items: [] });
-      venues.get(k).items.push(i);
-    }
-    if (loose.length) {
-      const top = [...venues.values()].sort((a, b) => b.items.length - a.items.length)[0];
-      if (top) top.items.push(...loose);
-      else venues.set('', { key: `?|${day}`, place: '', at: 0, items: loose });
-    }
-    for (const v of venues.values()) { v.at = Math.max(...v.items.map(seenAt)); out.push(v); }
+  const out = groups.filter((g) => !g.into);
+  for (const i of items) {
+    if (keyOf(i.place)) continue;
+    const days = daysOf(i);
+    const top = out.filter((g) => g.place && g.items.some((x) => daysOf(x).some((d) => days.includes(d))))
+      .sort((a, b) => b.items.length - a.items.length)[0];
+    if (top) { top.items.push(i); continue; }
+    let g = out.find((x) => !x.place && x.day === days[1]);
+    if (!g) { g = { place: '', day: days[1], items: [] }; out.push(g); }
+    g.items.push(i);
   }
+  // 다녀온 날 = 묶인 항목 중 가장 이른 관람일 (사진 찍은 날이 있으면 그 날)
+  for (const g of out) { g.at = Math.min(...g.items.map(seenAt)); g.key = `${keyOf(g.place) || '?'}|${fmtDate(g.at)}`; }
   return out.sort((a, b) => b.at - a.at);
 }
 
@@ -1135,7 +1145,9 @@ function renderGrid() {
 
 function artistThumb(name) {
   const it = state.items.find((i) => i.artist === name && i.images.length);
-  return it ? `<img src="/img/${it.images[0]}" alt="" loading="lazy" />` : esc(name.slice(0, 1));
+  const work = state.artists.find((a) => a.name === name)?.works?.find((w) => w.image);
+  const key = it?.images[0] || work?.image;
+  return key ? `<img src="/img/${key}" alt="" loading="lazy" />` : esc(name.slice(0, 1));
 }
 
 function renderArtists() {
@@ -1147,10 +1159,12 @@ function renderArtists() {
       <div class="list-main">
         <div class="list-title">${esc(a.name)}</div>
         <div class="list-sub">${a.description ? esc(a.description.split('\n')[0]) : '아직 소개가 없어요'}</div>
+        ${a.works?.length ? `<div class="list-works">${a.works.map((w) => (w.image ? `<img src="/img/${w.image}" alt="" loading="lazy" />` : '')).join('')}<span>대표작 ${esc(a.works.map((w) => w.titleKo || w.title).join(' · '))}</span></div>` : ''}
       </div>
       <span class="list-count">${a.count}</span>
     </button></li>`).join('');
   $('#artistList').querySelectorAll('button').forEach((b) => (b.onclick = () => go(`#/artist/${encodeURIComponent(b.dataset.name)}`)));
+  renderAutoBox();
   const empty = $('#artistEmpty');
   empty.hidden = list.length > 0;
   empty.innerHTML = state.artists.length
@@ -1173,6 +1187,7 @@ function renderArtistPage(name) {
   $('#aiBtn').textContent = a.description && a.byAi ? '다시 만들기' : 'AI로 설명 만들기';
   $('#aiSources').innerHTML = (a.sources || []).map((s) => `<li><a href="${esc(s.uri)}" target="_blank" rel="noopener noreferrer">${esc(s.title)}</a></li>`).join('');
   $('#aiNote').textContent = a.byAi ? 'AI 설명은 틀릴 수 있어요. 중요한 내용은 출처에서 꼭 확인하세요.' : '';
+  renderWorks(a);
   showAiEdit(false);
 
   $('#aiBtn').onclick = () => (state.loggedIn ? runAi(name) : openLogin(() => runAi(name)));
@@ -1181,6 +1196,93 @@ function renderArtistPage(name) {
   const grid = $('#artistGrid');
   grid.innerHTML = works.map(cardHtml).join('');
   bindCards(grid);
+}
+
+/* ─────────────── 작가 대표작 2점 (그림) ─────────────── */
+
+function renderWorks(a) {
+  const box = $('#aiWorks');
+  const works = a.works || [];
+  if (!works.length) {
+    box.innerHTML = a.description ? '' : '<p class="hint">새 작가는 저장하면 AI가 소개와 대표작 그림을 자동으로 찾아요. 잠시 뒤 다시 열어 보세요.</p>';
+    return;
+  }
+  const host = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return ''; } };
+  box.innerHTML = `<h4 class="works-title">대표작</h4><div class="works-grid">${works.map((w, n) => `
+    <figure class="work">
+      <button type="button" class="work-img" data-n="${n}" aria-label="크게 보기">${w.image ? `<img src="/img/${w.image}" alt="${esc(w.titleKo || w.title)}" loading="lazy" />` : `<span>그림을 못 찾았어요</span>`}</button>
+      <figcaption>
+        <strong>${esc(w.titleKo || w.title)}</strong>
+        ${w.titleKo && w.title && w.titleKo !== w.title ? `<em>${esc(w.title)}</em>` : ''}
+        <small>${esc([w.year, w.note].filter(Boolean).join(' · '))}</small>
+        <span class="work-links">
+          ${w.imageFrom ? `<a href="${esc(w.page || w.imageFrom)}" target="_blank" rel="noopener noreferrer">출처 ${esc(host(w.page || w.imageFrom))}</a>` : w.page ? `<a href="${esc(w.page)}" target="_blank" rel="noopener noreferrer">${esc(host(w.page))}</a>` : ''}
+          <a href="https://www.google.com/search?tbm=isch&q=${encodeURIComponent(`${a.name} ${w.title || w.titleKo}`)}" target="_blank" rel="noopener noreferrer">구글 이미지</a>
+          <button type="button" class="work-photo" data-n="${n}">${w.image ? '그림 바꾸기' : '그림 넣기'}</button>
+        </span>
+      </figcaption>
+    </figure>`).join('')}</div>
+    <p class="hint">그림은 웹에서 찾아 저장한 것이라 작품과 다를 수 있어요. 저작권은 작가에게 있어요.</p>`;
+  box.querySelectorAll('.work-img').forEach((b) => (b.onclick = () => {
+    const w = works[Number(b.dataset.n)];
+    if (w.image) { $('#viewerImg').src = `/img/${w.image}`; $('#viewer').hidden = false; }
+  }));
+  box.querySelectorAll('.work-photo').forEach((b) => (b.onclick = () => needLogin(() => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      setBusy(b, true);
+      try {
+        const blob = await resizeImage(file);
+        const { key } = await api('/api/images', { method: 'POST', raw: blob, type: blob.type });
+        const next = works.map((w, i) => (i === Number(b.dataset.n) ? { ...w, image: key, imageFrom: '' } : w));
+        const r = await api(`/api/artists/${encodeURIComponent(a.name)}/works`, { method: 'PUT', body: { works: next } });
+        a.works = r.works;
+        await refreshArtists();
+        toast('대표작 그림을 바꿨어요');
+      } catch (err) { toast(err.message); setBusy(b, false); }
+    };
+    input.click();
+  })));
+}
+
+// 작가 소개·대표작 자동 채우기: 매일 GitHub Actions 가 비어 있는 작가를 채우고, 여기서 지금 바로 돌릴 수도 있어요.
+let autoRun = null;
+function renderAutoBox() {
+  const box = $('#autoBox');
+  if (!box) return;
+  const empty = state.artists.filter((a) => !a.description || !a.works?.length).length;
+  if (!state.artists.length) { box.innerHTML = ''; return; }
+  box.innerHTML = `<div class="auto-card">
+      <div><strong>${ICON.spark}소개·대표작 자동 채우기</strong>
+      <p>${autoRun ? esc(autoRun) : empty ? `비어 있는 작가 ${empty}명 · 매일 새벽 자동으로 채워요` : '모든 작가에 소개와 대표작이 있어요'}</p></div>
+      ${empty && !autoRun ? '<button class="btn small" id="autoNow" type="button">지금 채우기</button>' : ''}
+    </div>`;
+  if ($('#autoNow')) $('#autoNow').onclick = () => needLogin(runAuto);
+}
+
+async function runAuto() {
+  let n = 0;
+  autoRun = '작가를 찾는 중…';
+  renderAutoBox();
+  try {
+    for (;;) {
+      const r = await api('/api/artists/auto', { method: 'POST' });
+      if (!r.done) break;
+      n++;
+      await refreshArtists();
+      if (!r.remaining) break;
+      // 무료 한도(분당 5회)를 지키려고 한 명씩 16초 쉬어요
+      for (let s = 16; s > 0; s--) { autoRun = `${r.done} 채웠어요 · 남은 ${r.remaining}명 · ${s}초 뒤 다음`; renderAutoBox(); await new Promise((ok) => setTimeout(ok, 1000)); }
+    }
+    toast(n ? `작가 ${n}명을 채웠어요` : '채울 작가가 없어요');
+  } catch (err) { toast(err.message); }
+  autoRun = null;
+  await refreshArtists();
+  loadStats();
 }
 
 function showAiEdit(on) {

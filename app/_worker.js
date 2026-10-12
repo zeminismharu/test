@@ -27,7 +27,9 @@
  *   POST   /api/group    { photos }       로그인. 여러 장을 같이 보고 같은 관람(같은 전시·영화)끼리 묶기
  *   GET    /api/artists                   공개. 작가 목록 + 설명
  *   PUT    /api/artists/:name             로그인. 작가 설명 직접 고치기
- *   POST   /api/artists/:name/ai          로그인. 구글 Gemini 로 작가 설명 만들기
+ *   POST   /api/artists/:name/ai          로그인. 구글 Gemini 로 작가 설명 + 대표작 2점(그림 파일) 만들기
+ *   PUT    /api/artists/:name/works       로그인. 대표작 고치기 (사진 바꾸기 등)
+ *   POST   /api/artists/auto              로그인. 소개·대표작이 비어 있는 작가 한 명 채우기 (매일 GitHub Actions 가 부름)
  *   GET    /api/boards                    로그인. 작업 계획 보드 목록 (관리 화면)
  *   POST   /api/boards                    로그인. 새 보드
  *   GET    /api/boards/:id                로그인. 보드 하나 (그림·조명·할 일 전부)
@@ -60,10 +62,11 @@ const CATEGORIES = ['exhibition', 'movie', 'etc'];
 const LIMITS = { place: 100, title: 200, artist: 100, memo: 10000, source: 1000, tag: 40, tags: 30, description: 5000 };
 
 const encoder = new TextEncoder();
+const str = (v, max) => String(v ?? '').trim().slice(0, max);
 let schemaReady = false;
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const { pathname } = url;
 
@@ -75,7 +78,7 @@ export default {
     try {
       if (!env.DB) return json({ error: '데이터베이스(DB)가 연결되지 않았습니다.' }, 503);
       await ensureSchema(env);
-      return await route(request, env, pathname.slice(5).split('/').map(decodeURIComponent));
+      return await route(request, env, pathname.slice(5).split('/').map(decodeURIComponent), ctx);
     } catch (err) {
       console.error(err);
       return json({ error: '서버 오류가 났습니다. 잠시 뒤 다시 해 주세요.' }, 500);
@@ -83,7 +86,7 @@ export default {
   },
 };
 
-async function route(request, env, parts) {
+async function route(request, env, parts, ctx) {
   const m = request.method;
   const [head, id, sub] = parts;
 
@@ -94,13 +97,13 @@ async function route(request, env, parts) {
   if (head === 'items') {
     if (!id) {
       if (m === 'GET') return listItems(env);
-      if (m === 'POST') return (await requireLogin(request, env)) || createItem(request, env);
+      if (m === 'POST') return (await requireLogin(request, env)) || createItem(request, env, ctx);
       return methodNotAllowed();
     }
     if (id === 'merge' && !sub && m === 'POST') return (await requireLogin(request, env)) || mergeItems(request, env);
     if (sub === 'move' && m === 'POST') return (await requireLogin(request, env)) || movePhoto(request, env, id);
     if (sub) return notFound();
-    if (m === 'PUT') return (await requireLogin(request, env)) || updateItem(request, env, id);
+    if (m === 'PUT') return (await requireLogin(request, env)) || updateItem(request, env, id, ctx);
     if (m === 'DELETE') return (await requireLogin(request, env)) || deleteItem(env, id);
     return methodNotAllowed();
   }
@@ -160,6 +163,8 @@ async function route(request, env, parts) {
 
   if (head === 'artists') {
     if (!id) return m === 'GET' ? listArtists(env) : methodNotAllowed();
+    if (id === 'auto' && !sub) return m === 'POST' ? (await requireLogin(request, env)) || autoArtists(env) : methodNotAllowed();
+    if (sub === 'works' && m === 'PUT') return (await requireLogin(request, env)) || saveWorks(request, env, id);
     if (!sub && m === 'PUT') return (await requireLogin(request, env)) || saveArtist(request, env, id);
     if (sub === 'ai' && m === 'POST') return (await requireLogin(request, env)) || describeArtist(env, id);
     return methodNotAllowed();
@@ -250,6 +255,9 @@ async function ensureSchema(env) {
   await env.DB.prepare("ALTER TABLE items ADD COLUMN place TEXT NOT NULL DEFAULT ''").run().catch(() => {});
   // 2026-10 관람일 (사진 찍은 날). 0 이면 모름 → 화면에서 작성일을 씀
   await env.DB.prepare('ALTER TABLE items ADD COLUMN visited_at INTEGER NOT NULL DEFAULT 0').run().catch(() => {});
+  // 2026-10 작가 대표작 2점 [{ title, titleKo, year, note, image(사진 키), imageFrom, page }]
+  // 비어 있으면(NULL) 아직 한 번도 찾아보지 않은 작가 → 자동 채우기 대상
+  await env.DB.prepare('ALTER TABLE artists ADD COLUMN works TEXT').run().catch(() => {});
   schemaReady = true;
 }
 
@@ -303,7 +311,7 @@ function cleanItem(body) {
   };
 }
 
-async function createItem(request, env) {
+async function createItem(request, env, ctx) {
   const body = await readJson(request);
   if (!body) return json({ error: '잘못된 요청입니다.' }, 400);
   const it = cleanItem(body);
@@ -315,10 +323,11 @@ async function createItem(request, env) {
     'INSERT INTO items (id, title, artist, category, place, visited_at, memo, tags, source, images, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
   ).bind(id, it.title, it.artist, it.category, it.place, it.visitedAt, it.memo, JSON.stringify(it.tags), it.source, JSON.stringify(it.images), now, now).run();
   const row = await env.DB.prepare('SELECT * FROM items WHERE id = ?').bind(id).first();
+  queueArtist(env, ctx, it.artist);
   return json({ item: rowToItem(row) }, 201);
 }
 
-async function updateItem(request, env, id) {
+async function updateItem(request, env, id, ctx) {
   const body = await readJson(request);
   if (!body) return json({ error: '잘못된 요청입니다.' }, 400);
   const old = await env.DB.prepare('SELECT * FROM items WHERE id = ?').bind(id).first();
@@ -332,6 +341,7 @@ async function updateItem(request, env, id) {
   // 수정하면서 뺀 사진은 저장소에서도 지웁니다.
   const removed = safeParse(old.images, []).filter((k) => !it.images.includes(k));
   await Promise.all(removed.map((k) => env.IMAGES?.delete(k)));
+  if (it.artist !== old.artist) queueArtist(env, ctx, it.artist);
   const row = await env.DB.prepare('SELECT * FROM items WHERE id = ?').bind(id).first();
   return json({ item: rowToItem(row) });
 }
@@ -388,7 +398,7 @@ async function serveImage(env, key) {
 async function listArtists(env) {
   const { results } = await env.DB.prepare(`
     SELECT i.artist AS name, COUNT(*) AS count, MAX(i.created_at) AS last_at,
-           a.description, a.sources, a.by_ai, a.updated_at
+           a.description, a.sources, a.by_ai, a.updated_at, a.works
     FROM items i LEFT JOIN artists a ON a.name = i.artist
     WHERE i.artist != ''
     GROUP BY i.artist
@@ -401,6 +411,7 @@ async function listArtists(env) {
       description: r.description || '',
       sources: safeParse(r.sources, []),
       byAi: !!r.by_ai,
+      works: safeParse(r.works, []),
       updatedAt: r.updated_at || null,
     })),
   });
@@ -427,27 +438,38 @@ async function upsertArtist(env, name, description, sources, byAi) {
 async function describeArtist(env, name) {
   name = String(name).trim().slice(0, LIMITS.artist);
   if (!name) return json({ error: '작가 이름이 없습니다.' }, 400);
-  if (!env.GEMINI_API_KEY) return json({ error: '구글 AI 키(GEMINI_API_KEY)가 설정되지 않았습니다.' }, 503);
+  const r = await fillArtist(env, name);
+  return r.error ? json({ error: r.error }, r.status || 502) : json({ artist: r.artist });
+}
+
+// 작가 소개 + 대표작 2점을 구글 검색으로 찾고, 대표작 그림은 내려받아 사진 저장소에 넣습니다.
+// AI 한 번만 부릅니다 (무료 한도 아끼기).
+async function fillArtist(env, name, keepManual = false) {
+  if (!env.GEMINI_API_KEY) return { error: '구글 AI 키(GEMINI_API_KEY)가 설정되지 않았습니다.', status: 503 };
 
   // 동명이인을 구분할 수 있도록, 이 작가로 저장된 레퍼런스 제목과 태그를 같이 알려줍니다.
   const { results } = await env.DB.prepare(
-    'SELECT title, tags FROM items WHERE artist = ? ORDER BY created_at DESC LIMIT 15'
+    'SELECT title, tags, place FROM items WHERE artist = ? ORDER BY created_at DESC LIMIT 15'
   ).bind(name).all();
   const titles = results.map((r) => r.title).filter(Boolean);
+  const places = [...new Set(results.map((r) => r.place).filter(Boolean))].slice(0, 5);
   const tags = [...new Set(results.flatMap((r) => safeParse(r.tags, [])))].slice(0, 20);
 
   const prompt = [
     `"${name}"라는 작가(아티스트·디자이너·작가 등 창작자)를 한국어로 간단히 소개해 주세요.`,
-    titles.length ? `참고: 사용자가 이 작가의 작품으로 저장한 것 — ${titles.join(', ')}` : '',
+    titles.length ? `참고: 사용자가 이 작가의 작품·전시로 저장한 것 — ${titles.join(', ')}` : '',
+    places.length ? `참고: 본 곳 — ${places.join(', ')}` : '',
     tags.length ? `참고 태그: ${tags.join(', ')}` : '',
     '',
     '형식:',
     '- 첫 줄: 한 문장 요약 (어느 나라, 어떤 분야, 언제 활동)',
     '- 그다음 3~5줄: 대표 작품, 스타일·특징, 왜 레퍼런스로 볼 만한지',
     '- 마크다운 기호(#, *, **) 없이 평범한 문장으로, 한 줄에 한 문장.',
+    '- 맨 마지막 줄에는 웹에서 확인한 대표작 2점을 아래 모양의 JSON 한 줄로만 적어 주세요 (줄 맨 앞은 WORKS=):',
+    'WORKS=[{"title":"작품 원래 이름","titleKo":"한국어 이름","year":"제작 연도","note":"한 줄 설명","image":"작품 사진 파일의 직접 주소(https://… .jpg/.png/.webp). 확실하지 않으면 빈 문자열","page":"그 작품을 소개한 웹 페이지 주소"}]',
     '',
     '중요: 확실하지 않은 사실은 지어내지 마세요. 어떤 사람인지 찾을 수 없거나 동명이인이 여럿이라 특정할 수 없으면',
-    '"정확한 정보를 찾지 못했습니다."라고 쓰고, 알 수 있는 범위만 짧게 적어 주세요.',
+    '"정확한 정보를 찾지 못했습니다."라고 쓰고, 알 수 있는 범위만 짧게 적고, 대표작은 WORKS=[] 로 두세요.',
   ].filter((l) => l !== null).join('\n');
 
   const model = env.GEMINI_MODEL || DEFAULT_MODEL;
@@ -458,20 +480,180 @@ async function describeArtist(env, name) {
     ...(model !== FALLBACK_MODEL ? [{ model: FALLBACK_MODEL, search: true }, { model: FALLBACK_MODEL, search: false }] : []),
   ];
   let lastError = '';
+  let lastStatus = 502;
   const skip = new Set(); // 한도·붐빔에 걸린 모델은 다시 묻지 않음
   for (const a of attempts) {
     if (skip.has(a.model)) continue;
     const res = await callGemini(env, a.model, prompt, a.search);
     if (res.text) {
-      const description = res.text.trim().slice(0, LIMITS.description);
-      await upsertArtist(env, name, description, res.sources, true);
-      return json({ artist: { name, description, sources: res.sources, byAi: true, model: a.model } });
+      const { text, works: found } = splitWorks(res.text);
+      const description = text.trim().slice(0, LIMITS.description);
+      const old = await env.DB.prepare('SELECT description, by_ai, works FROM artists WHERE name = ?').bind(name).first();
+      const works = [];
+      for (const { imageUrl, ...w } of found.slice(0, 2)) works.push({ ...w, ...(await findWorkImage(env, name, { ...w, imageUrl })) });
+      // 사장님이 직접 쓴 소개는 자동 채우기가 덮어쓰지 않습니다 (대표작만 넣음).
+      const manual = keepManual && old && !old.by_ai && old.description;
+      if (!manual) await upsertArtist(env, name, description, res.sources, true);
+      else await env.DB.prepare('UPDATE artists SET updated_at = ? WHERE name = ?').bind(Date.now(), name).run();
+      await env.DB.prepare('UPDATE artists SET works = ? WHERE name = ?').bind(JSON.stringify(works), name).run();
+      await dropWorkImages(env, safeParse(old?.works, []), works);
+      return { artist: manual
+        ? { name, description: old.description, sources: [], byAi: false, works, model: a.model }
+        : { name, description, sources: res.sources, byAi: true, works, model: a.model } };
     }
     lastError = res.error;
+    lastStatus = res.status === 429 ? 429 : 502;
     if (switchModel(res)) { skip.add(a.model); continue; }
     if (stopRetry(res)) break;
   }
-  return json({ error: `AI 설명을 만들지 못했습니다. ${lastError}`.trim() }, 502);
+  return { error: `AI 설명을 만들지 못했습니다. ${lastError}`.trim(), status: lastStatus };
+}
+
+// 답의 마지막 "WORKS=[…]" 줄을 떼어 대표작 목록으로 만듭니다.
+function splitWorks(text) {
+  const lines = String(text).split('\n');
+  let works = [];
+  const keep = [];
+  for (const line of lines) {
+    const m = line.match(/^\s*`*\s*WORKS\s*=\s*(\[.*\])\s*`*\s*$/);
+    if (!m) { if (!/^\s*```\s*(json)?\s*$/i.test(line)) keep.push(line); continue; }
+    try { works = JSON.parse(m[1]); } catch { works = []; }
+  }
+  const cleanUrl = (u) => (/^https?:\/\/[^\s"'<>]+$/i.test(String(u || '').trim()) ? String(u).trim().slice(0, 1000) : '');
+  return {
+    text: keep.join('\n').trim(),
+    works: (Array.isArray(works) ? works : []).filter((w) => w && (w.title || w.titleKo)).map((w) => ({
+      title: str(w.title, 200), titleKo: str(w.titleKo, 200), year: str(w.year, 40), note: str(w.note, 300),
+      imageUrl: cleanUrl(w.image), page: cleanUrl(w.page),
+    })),
+  };
+}
+
+// 대표작 그림 찾기: ① AI가 알려준 그림 주소 → ② 작품 페이지의 대표 그림(og:image) → ③ 위키미디어 공용 검색.
+// 찾으면 내려받아 사진 저장소(KV)에 넣습니다 (원래 사이트에서 그림이 사라져도 보이도록).
+async function findWorkImage(env, artist, w) {
+  const tries = [];
+  if (w.imageUrl) tries.push(() => w.imageUrl);
+  if (w.page) tries.push(() => ogImageOf(w.page));
+  tries.push(() => commonsImage(`${artist} ${w.title || w.titleKo}`, [artist, w.title, w.titleKo]));
+  for (const t of tries) {
+    try {
+      const url = await t();
+      if (!url) continue;
+      const key = await storeRemoteImage(env, url);
+      if (key) return { image: key, imageFrom: url };
+    } catch { /* 다음 방법으로 */ }
+  }
+  return { image: '', imageFrom: '' };
+}
+
+const FETCH_HEADERS = { 'user-agent': 'zeminism-archive/1.0 (personal reference archive)', accept: 'image/*,text/html;q=0.8,*/*;q=0.5' };
+
+async function storeRemoteImage(env, url) {
+  if (!env.IMAGES || !/^https:\/\//i.test(url) || /^https:\/\/(\d+\.){3}\d+|localhost/i.test(url)) return '';
+  const res = await fetch(url, { headers: FETCH_HEADERS, redirect: 'follow', signal: AbortSignal.timeout(10000) });
+  if (!res.ok) return '';
+  const type = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+  if (!IMAGE_TYPES.includes(type)) return '';
+  const buf = await res.arrayBuffer();
+  if (buf.byteLength < 2000 || buf.byteLength > MAX_IMAGE_BYTES) return ''; // 아주 작은 건 아이콘
+  const key = crypto.randomUUID();
+  await env.IMAGES.put(key, buf, { metadata: { type, from: url.slice(0, 500) } });
+  return key;
+}
+
+async function ogImageOf(page) {
+  if (!/^https:\/\//i.test(page)) return '';
+  const res = await fetch(page, { headers: FETCH_HEADERS, redirect: 'follow', signal: AbortSignal.timeout(8000) });
+  if (!res.ok || !/text\/html/i.test(res.headers.get('content-type') || '')) return '';
+  const html = (await res.text()).slice(0, 300000);
+  const m = html.match(/<meta[^>]+(?:property|name)=["'](?:og:image(?::secure_url)?|twitter:image)["'][^>]*content=["']([^"']+)["']/i) ||
+    html.match(/<meta[^>]+content=["']([^"']+)["'][^>]*(?:property|name)=["'](?:og:image|twitter:image)["']/i);
+  if (!m) return '';
+  try { return new URL(m[1].replace(/&amp;/g, '&'), res.url || page).href; } catch { return ''; }
+}
+
+// 위키미디어 공용(자유 이용 그림 모음)에서 찾기. 파일 이름에 작가나 작품 이름이 들어간 것만 씁니다.
+async function commonsImage(query, words) {
+  const u = new URL('https://commons.wikimedia.org/w/api.php');
+  Object.entries({
+    action: 'query', format: 'json', generator: 'search', gsrnamespace: '6', gsrlimit: '5', gsrsearch: query,
+    prop: 'imageinfo', iiprop: 'url|mime', iiurlwidth: '1200',
+  }).forEach(([k, v]) => u.searchParams.set(k, v));
+  const res = await fetch(u, { headers: FETCH_HEADERS, signal: AbortSignal.timeout(8000) });
+  if (!res.ok) return '';
+  const data = await res.json();
+  const norm = (t) => String(t || '').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+  const keys = words.map(norm).filter((k) => k.length >= 2);
+  const pages = Object.values(data?.query?.pages || {}).sort((a, b) => (a.index || 0) - (b.index || 0));
+  for (const p of pages) {
+    const info = p.imageinfo?.[0];
+    if (!info || !/image\/(jpeg|png|webp)/.test(info.mime || '')) continue;
+    const name = norm(p.title);
+    if (!keys.some((k) => name.includes(k))) continue;
+    return info.thumburl || info.url || '';
+  }
+  return '';
+}
+
+// 바뀐 대표작에서 빠진 그림은 사진 저장소에서도 지웁니다.
+async function dropWorkImages(env, oldWorks, newWorks) {
+  const keep = new Set(newWorks.map((w) => w.image).filter(Boolean));
+  await Promise.all(oldWorks.map((w) => w?.image).filter((k) => k && !keep.has(k) && /^[a-z0-9-]{8,64}$/.test(k)).map((k) => env.IMAGES?.delete(k)));
+}
+
+// 대표작 직접 고치기 (사진 바꾸기·글 고치기·빼기)
+async function saveWorks(request, env, name) {
+  name = String(name).trim().slice(0, LIMITS.artist);
+  const body = await readJson(request);
+  if (!name || !Array.isArray(body?.works)) return json({ error: '잘못된 요청입니다.' }, 400);
+  const works = body.works.slice(0, 4).map((w) => ({
+    title: str(w?.title, 200), titleKo: str(w?.titleKo, 200), year: str(w?.year, 40), note: str(w?.note, 300),
+    image: /^[a-z0-9-]{8,64}$/.test(String(w?.image || '')) ? String(w.image) : '',
+    imageFrom: str(w?.imageFrom, 1000), page: str(w?.page, 1000),
+  }));
+  const old = await env.DB.prepare('SELECT works FROM artists WHERE name = ?').bind(name).first();
+  await env.DB.prepare(`
+    INSERT INTO artists (name, works, updated_at) VALUES (?, ?, ?)
+    ON CONFLICT(name) DO UPDATE SET works = excluded.works
+  `).bind(name, JSON.stringify(works), Date.now()).run();
+  await dropWorkImages(env, safeParse(old?.works, []), works);
+  return json({ works });
+}
+
+/* ─────────────── 작가 자동 채우기 ─────────────── */
+
+// 새 작가가 생기면 응답을 보낸 뒤 뒤에서 바로 소개·대표작을 찾습니다.
+// 같은 작가를 여러 번 찾지 않도록 빈 줄을 먼저 넣고, 넣는 데 성공한 요청만 찾습니다.
+function queueArtist(env, ctx, name) {
+  if (!name || !ctx?.waitUntil || !env.GEMINI_API_KEY) return;
+  ctx.waitUntil((async () => {
+    const r = await env.DB.prepare("INSERT OR IGNORE INTO artists (name, description, sources, by_ai, updated_at, works) VALUES (?, '', '[]', 0, ?, '[]')")
+      .bind(name, Date.now()).run();
+    if (!r.meta?.changes) return; // 이미 있는 작가
+    await fillArtist(env, name, true);
+  })().catch((err) => console.error('auto artist', err)));
+}
+
+// 소개도 대표작도 없는 작가 한 명을 채웁니다. GitHub Actions 가 매일 여러 번 나눠 부릅니다 (무료 한도 지키기).
+async function autoArtists(env) {
+  const { results } = await env.DB.prepare(`
+    SELECT i.artist AS name FROM items i LEFT JOIN artists a ON a.name = i.artist
+    WHERE i.artist != '' AND (a.name IS NULL OR a.works IS NULL OR a.description = ''
+      OR (a.works = '[]' AND a.updated_at < ?))
+    GROUP BY i.artist ORDER BY MIN(COALESCE(a.updated_at, 0)) ASC, COUNT(*) DESC
+  `).bind(Date.now() - 30 * 864e5).all(); // 대표작을 못 찾은 작가는 30일 뒤에 다시
+  const todo = results.map((r) => r.name);
+  if (!todo.length) return json({ done: null, remaining: 0 });
+  if (!env.GEMINI_API_KEY) return json({ error: '구글 AI 키(GEMINI_API_KEY)가 설정되지 않았습니다.' }, 503);
+  const name = todo[0];
+  const r = await fillArtist(env, name, true);
+  if (r.error) {
+    // 실패한 작가는 맨 뒤로 (다음 번에 다른 작가부터)
+    await env.DB.prepare("INSERT INTO artists (name, updated_at) VALUES (?, ?) ON CONFLICT(name) DO UPDATE SET updated_at = excluded.updated_at").bind(name, Date.now()).run();
+    return json({ error: r.error, name, remaining: todo.length }, r.status || 502);
+  }
+  return json({ done: name, works: r.artist.works.length, images: r.artist.works.filter((w) => w.image).length, remaining: todo.length - 1 });
 }
 
 /* ─────────────── 항목 합치기 · 사진 옮기기 ─────────────── */
