@@ -17,6 +17,10 @@
  *   POST   /api/todo  { name, area }      로그인. 가볼 곳 추가
  *   PUT    /api/todo/:id { done }         로그인. 직접 '다녀옴' 표시
  *   DELETE /api/todo/:id                  로그인. 빼기
+ *   POST   /api/items/merge { ids, keep }  로그인. 같은 관람 항목 합치기
+ *   POST   /api/items/:id/move { image, to } 로그인. 사진 한 장을 다른 항목으로
+ *   GET    /api/export · POST /api/import  로그인. 백업 받기 · 되살리기
+ *   GET/POST/PUT/DELETE /api/wish          보고 싶은 전시 (쓰기는 로그인)
  *   GET    /api/stats                     공개. 오늘·이번 달 AI 사용량과 하루 한도 (첫 화면 게임 카드)
  *   PUT    /api/settings                  로그인. { aiDailyTokens, aiDailyRequests } 하루 한도 정하기
  *   POST   /api/group    { photos }       로그인. 여러 장을 같이 보고 같은 관람(같은 전시·영화)끼리 묶기
@@ -49,7 +53,7 @@ const FALLBACK_MODEL = 'gemini-3.8-flash';
 // 앱이 먼저 쉬는 기본 한도 (첫 화면 카드에서 바꿀 수 있음). 두 모델을 합쳐 하루 40회 중 여유를 둠.
 const DEFAULT_LIMITS = { aiRpm: 4, aiDailyRequests: 36 };
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
-const MAX_IMAGES = 20;
+const MAX_IMAGES = 60; // 한 관람에 사진이 많아 합칠 수 있도록
 // 분류: 전시관 · 영화 · 그 외 (화면에 보이는 순서)
 const CATEGORIES = ['exhibition', 'movie', 'etc'];
 const LIMITS = { place: 100, title: 200, artist: 100, memo: 10000, source: 1000, tag: 40, tags: 30, description: 5000 };
@@ -92,9 +96,23 @@ async function route(request, env, parts) {
       if (m === 'POST') return (await requireLogin(request, env)) || createItem(request, env);
       return methodNotAllowed();
     }
+    if (id === 'merge' && !sub && m === 'POST') return (await requireLogin(request, env)) || mergeItems(request, env);
+    if (sub === 'move' && m === 'POST') return (await requireLogin(request, env)) || movePhoto(request, env, id);
     if (sub) return notFound();
     if (m === 'PUT') return (await requireLogin(request, env)) || updateItem(request, env, id);
     if (m === 'DELETE') return (await requireLogin(request, env)) || deleteItem(env, id);
+    return methodNotAllowed();
+  }
+
+  if (head === 'export' && !id) return m === 'GET' ? (await requireLogin(request, env)) || exportAll(env) : methodNotAllowed();
+  if (head === 'import' && !id) return m === 'POST' ? (await requireLogin(request, env)) || importAll(request, env) : methodNotAllowed();
+
+  if (head === 'wish') {
+    if (sub) return notFound();
+    if (!id && m === 'GET') return listWish(env);
+    if (!id && m === 'POST') return (await requireLogin(request, env)) || addWish(request, env);
+    if (id && m === 'PUT') return (await requireLogin(request, env)) || updateWish(request, env, id);
+    if (id && m === 'DELETE') return (await requireLogin(request, env)) || deleteWish(env, id);
     return methodNotAllowed();
   }
 
@@ -104,6 +122,10 @@ async function route(request, env, parts) {
     return methodNotAllowed();
   }
 
+  if (head === 'venues' && !id && m === 'GET') {
+    const { results } = await env.DB.prepare('SELECT * FROM venues').all();
+    return json({ venues: results.map((r) => ({ name: r.name, info: safeParse(r.info, {}), sources: safeParse(r.sources, []), updatedAt: r.updated_at })) });
+  }
   if (head === 'venues' && id) {
     if (!sub && m === 'GET') return getVenue(env, id);
     if (sub === 'refresh' && m === 'POST') return (await requireLogin(request, env)) || refreshVenue(env, id);
@@ -198,6 +220,16 @@ async function ensureSchema(env) {
       created_at INTEGER NOT NULL
     )`),
     env.DB.prepare('CREATE TABLE IF NOT EXISTS analysis (image TEXT PRIMARY KEY, result TEXT NOT NULL, created_at INTEGER NOT NULL)'),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS wish (
+      id TEXT PRIMARY KEY,
+      venue TEXT NOT NULL DEFAULT '',
+      title TEXT NOT NULL,
+      period TEXT NOT NULL DEFAULT '',
+      artist TEXT NOT NULL DEFAULT '',
+      ends TEXT NOT NULL DEFAULT '',
+      done INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL
+    )`),
     env.DB.prepare('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)'),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS boards (
       id TEXT PRIMARY KEY,
@@ -212,6 +244,8 @@ async function ensureSchema(env) {
   await env.DB.prepare("ALTER TABLE items ADD COLUMN category TEXT NOT NULL DEFAULT 'etc'").run().catch(() => {});
   // 2026-10 전시관 이름(본 곳·장소) 칸 추가
   await env.DB.prepare("ALTER TABLE items ADD COLUMN place TEXT NOT NULL DEFAULT ''").run().catch(() => {});
+  // 2026-10 관람일 (사진 찍은 날). 0 이면 모름 → 화면에서 작성일을 씀
+  await env.DB.prepare('ALTER TABLE items ADD COLUMN visited_at INTEGER NOT NULL DEFAULT 0').run().catch(() => {});
   schemaReady = true;
 }
 
@@ -222,6 +256,7 @@ function rowToItem(r) {
     artist: r.artist,
     category: CATEGORIES.includes(r.category) ? r.category : 'etc',
     place: r.place || '',
+    visitedAt: r.visited_at || 0,
     memo: r.memo,
     tags: safeParse(r.tags, []),
     source: r.source,
@@ -234,6 +269,12 @@ function rowToItem(r) {
 async function listItems(env) {
   const { results } = await env.DB.prepare('SELECT * FROM items ORDER BY created_at DESC').all();
   return json({ items: results.map(rowToItem) });
+}
+
+// 관람일: 2000년 ~ 내일 사이의 시각(ms)만 받습니다.
+function validTime(v) {
+  const n = Math.floor(Number(v) || 0);
+  return n > 946684800000 && n < Date.now() + 86400000 ? n : 0;
 }
 
 function cleanItem(body) {
@@ -250,6 +291,7 @@ function cleanItem(body) {
     artist: str(body.artist, LIMITS.artist),
     category: CATEGORIES.includes(body.category) ? body.category : 'etc',
     place: str(body.place, LIMITS.place),
+    visitedAt: validTime(body.visitedAt),
     memo: str(body.memo, LIMITS.memo),
     source: str(body.source, LIMITS.source),
     tags,
@@ -266,8 +308,8 @@ async function createItem(request, env) {
   const now = Date.now();
   const id = crypto.randomUUID();
   await env.DB.prepare(
-    'INSERT INTO items (id, title, artist, category, place, memo, tags, source, images, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-  ).bind(id, it.title, it.artist, it.category, it.place, it.memo, JSON.stringify(it.tags), it.source, JSON.stringify(it.images), now, now).run();
+    'INSERT INTO items (id, title, artist, category, place, visited_at, memo, tags, source, images, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  ).bind(id, it.title, it.artist, it.category, it.place, it.visitedAt, it.memo, JSON.stringify(it.tags), it.source, JSON.stringify(it.images), now, now).run();
   const row = await env.DB.prepare('SELECT * FROM items WHERE id = ?').bind(id).first();
   return json({ item: rowToItem(row) }, 201);
 }
@@ -281,8 +323,8 @@ async function updateItem(request, env, id) {
   if (!it.title && !it.images.length && !it.memo) return json({ error: '제목, 사진, 메모 중 하나는 있어야 합니다.' }, 400);
   it.artist = await canonicalArtist(env, it.artist, id);
   await env.DB.prepare(
-    'UPDATE items SET title = ?, artist = ?, category = ?, place = ?, memo = ?, tags = ?, source = ?, images = ?, updated_at = ? WHERE id = ?'
-  ).bind(it.title, it.artist, it.category, it.place, it.memo, JSON.stringify(it.tags), it.source, JSON.stringify(it.images), Date.now(), id).run();
+    'UPDATE items SET title = ?, artist = ?, category = ?, place = ?, visited_at = ?, memo = ?, tags = ?, source = ?, images = ?, updated_at = ? WHERE id = ?'
+  ).bind(it.title, it.artist, it.category, it.place, it.visitedAt, it.memo, JSON.stringify(it.tags), it.source, JSON.stringify(it.images), Date.now(), id).run();
   // 수정하면서 뺀 사진은 저장소에서도 지웁니다.
   const removed = safeParse(old.images, []).filter((k) => !it.images.includes(k));
   await Promise.all(removed.map((k) => env.IMAGES?.delete(k)));
@@ -426,6 +468,143 @@ async function describeArtist(env, name) {
     if (stopRetry(res)) break;
   }
   return json({ error: `AI 설명을 만들지 못했습니다. ${lastError}`.trim() }, 502);
+}
+
+/* ─────────────── 항목 합치기 · 사진 옮기기 ─────────────── */
+
+// 같은 관람인 여러 항목을 하나로: 사진·태그·메모를 keep 항목에 모으고 나머지 항목은 지웁니다 (사진 파일은 지우지 않음).
+async function mergeItems(request, env) {
+  const body = await readJson(request);
+  const ids = [...new Set((Array.isArray(body?.ids) ? body.ids : []).map(String))].slice(0, 50);
+  const keepId = String(body?.keep || ids[0] || '');
+  if (ids.length < 2 || !ids.includes(keepId)) return json({ error: '합칠 항목을 두 개 이상 골라 주세요.' }, 400);
+  const rows = [];
+  for (const id of ids) {
+    const r = await env.DB.prepare('SELECT * FROM items WHERE id = ?').bind(id).first();
+    if (r) rows.push(rowToItem(r));
+  }
+  const keep = rows.find((r) => r.id === keepId);
+  if (!keep || rows.length < 2) return notFound();
+  const others = rows.filter((r) => r.id !== keepId).sort((a, b) => a.createdAt - b.createdAt);
+  const images = [...new Set([...keep.images, ...others.flatMap((o) => o.images)])];
+  if (images.length > MAX_IMAGES) return json({ error: `사진이 ${images.length}장이라 한 항목(최대 ${MAX_IMAGES}장)에 다 들어가지 않아요.` }, 400);
+  const tags = [...new Set([...keep.tags, ...others.flatMap((o) => o.tags)])].slice(0, LIMITS.tags);
+  const memo = [keep.memo, ...others.map((o) => [o.title !== keep.title ? o.title : '', o.memo].filter(Boolean).join(' — '))]
+    .filter(Boolean).join('\n').slice(0, LIMITS.memo);
+  const pick = (k) => keep[k] || others.find((o) => o[k])?.[k] || '';
+  const visited = [keep, ...others].map((o) => o.visitedAt).filter(Boolean);
+  await env.DB.batch([
+    env.DB.prepare('UPDATE items SET images = ?, tags = ?, memo = ?, artist = ?, place = ?, visited_at = ?, created_at = ?, updated_at = ? WHERE id = ?')
+      .bind(JSON.stringify(images), JSON.stringify(tags), memo, pick('artist'), pick('place'), visited.length ? Math.min(...visited) : 0,
+        Math.min(...rows.map((r) => r.createdAt)), Date.now(), keepId),
+    ...others.map((o) => env.DB.prepare('DELETE FROM items WHERE id = ?').bind(o.id)),
+  ]);
+  const row = await env.DB.prepare('SELECT * FROM items WHERE id = ?').bind(keepId).first();
+  return json({ item: rowToItem(row), removed: others.map((o) => o.id) });
+}
+
+// 사진 한 장을 다른 항목으로 옮깁니다. 원래 항목이 텅 비면(사진·제목·메모 없음) 지웁니다.
+async function movePhoto(request, env, fromId) {
+  const body = await readJson(request);
+  const image = String(body?.image || '');
+  const toId = String(body?.to || '');
+  const fromRow = await env.DB.prepare('SELECT * FROM items WHERE id = ?').bind(fromId).first();
+  const toRow = await env.DB.prepare('SELECT * FROM items WHERE id = ?').bind(toId).first();
+  if (!fromRow || !toRow || fromId === toId) return notFound();
+  const from = rowToItem(fromRow); const to = rowToItem(toRow);
+  if (!from.images.includes(image)) return json({ error: '그 사진이 없어요.' }, 400);
+  if (to.images.length >= MAX_IMAGES) return json({ error: `옮길 항목에 사진이 이미 ${MAX_IMAGES}장이에요.` }, 400);
+  const fromImages = from.images.filter((k) => k !== image);
+  const now = Date.now();
+  const empty = !fromImages.length && !from.title && !from.memo;
+  await env.DB.batch([
+    env.DB.prepare('UPDATE items SET images = ?, updated_at = ? WHERE id = ?').bind(JSON.stringify([...to.images, image]), now, toId),
+    empty ? env.DB.prepare('DELETE FROM items WHERE id = ?').bind(fromId)
+      : env.DB.prepare('UPDATE items SET images = ?, updated_at = ? WHERE id = ?').bind(JSON.stringify(fromImages), now, fromId),
+  ]);
+  const a = await env.DB.prepare('SELECT * FROM items WHERE id = ?').bind(fromId).first();
+  const b = await env.DB.prepare('SELECT * FROM items WHERE id = ?').bind(toId).first();
+  return json({ from: a ? rowToItem(a) : null, to: rowToItem(b) });
+}
+
+/* ─────────────── 백업 · 되살리기 ─────────────── */
+
+const BACKUP_TABLES = ['items', 'artists', 'boards', 'todo_places', 'venues', 'wish', 'settings'];
+
+// 글로 된 자료를 모두 JSON 하나로. (사진 파일은 크기 때문에 빼고, 사진 이름표만 들어감 — 사진은 Cloudflare 에 그대로 남음)
+async function exportAll(env) {
+  const out = { app: 'zeminism-archive', version: 1, exportedAt: new Date().toISOString(), tables: {} };
+  for (const t of BACKUP_TABLES) out.tables[t] = (await env.DB.prepare(`SELECT * FROM ${t}`).all()).results;
+  return new Response(JSON.stringify(out), {
+    headers: {
+      'content-type': 'application/json; charset=utf-8',
+      'content-disposition': `attachment; filename="reference-backup-${kstDay()}.json"`,
+      'cache-control': 'no-store',
+    },
+  });
+}
+
+// 백업 파일로 되살리기: 같은 id 는 백업 내용으로 덮어쓰고, 없는 것은 새로 넣습니다. (지금 있는 다른 자료는 지우지 않음)
+async function importAll(request, env) {
+  const body = await readJson(request);
+  if (body?.app !== 'zeminism-archive' || !body.tables) return json({ error: '이 앱의 백업 파일이 아니에요.' }, 400);
+  const counts = {};
+  for (const t of BACKUP_TABLES) {
+    const rows = Array.isArray(body.tables[t]) ? body.tables[t] : [];
+    if (!rows.length) continue;
+    const cols = (await env.DB.prepare(`PRAGMA table_info(${t})`).all()).results.map((c) => c.name);
+    const stmts = [];
+    for (const r of rows) {
+      const keys = Object.keys(r).filter((k) => cols.includes(k));
+      if (!keys.length) continue;
+      stmts.push(env.DB.prepare(`INSERT OR REPLACE INTO ${t} (${keys.join(', ')}) VALUES (${keys.map(() => '?').join(', ')})`).bind(...keys.map((k) => r[k])));
+    }
+    for (let i = 0; i < stmts.length; i += 50) await env.DB.batch(stmts.slice(i, i + 50));
+    counts[t] = stmts.length;
+  }
+  return json({ ok: true, counts });
+}
+
+/* ─────────────── 보고 싶은 전시 ─────────────── */
+
+// 기간 글에서 끝나는 날을 찾습니다: "2026.09.01 ~ 2026.12.31" → 2026-12-31
+function endDateOf(period) {
+  const all = [...String(period || '').matchAll(/(20\d\d)[.\-/년\s]+(\d{1,2})[.\-/월\s]+(\d{1,2})/g)];
+  const m = all[all.length - 1];
+  return m ? `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}` : '';
+}
+
+const wishRow = (r) => ({ id: r.id, venue: r.venue, title: r.title, period: r.period, artist: r.artist, ends: r.ends, done: !!r.done, createdAt: r.created_at });
+
+async function listWish(env) {
+  const { results } = await env.DB.prepare("SELECT * FROM wish ORDER BY done, CASE WHEN ends = '' THEN '9999' ELSE ends END, created_at").all();
+  return json({ wish: results.map(wishRow) });
+}
+
+async function addWish(request, env) {
+  const b = await readJson(request);
+  const title = String(b?.title ?? '').trim().slice(0, 200);
+  if (!title) return json({ error: '전시 제목이 없어요.' }, 400);
+  const venue = String(b?.venue ?? '').trim().slice(0, LIMITS.place);
+  const dup = await env.DB.prepare('SELECT * FROM wish WHERE title = ? AND venue = ?').bind(title, venue).first();
+  if (dup) return json({ wish: wishRow(dup), existed: true });
+  const period = String(b?.period ?? '').trim().slice(0, 100);
+  const id = crypto.randomUUID();
+  await env.DB.prepare('INSERT INTO wish (id, venue, title, period, artist, ends, done, created_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?)')
+    .bind(id, venue, title, period, String(b?.artist ?? '').trim().slice(0, 100), endDateOf(period), Date.now()).run();
+  return json({ wish: wishRow(await env.DB.prepare('SELECT * FROM wish WHERE id = ?').bind(id).first()) }, 201);
+}
+
+async function updateWish(request, env, id) {
+  const b = await readJson(request);
+  await env.DB.prepare('UPDATE wish SET done = ? WHERE id = ?').bind(b?.done ? 1 : 0, id).run();
+  const r = await env.DB.prepare('SELECT * FROM wish WHERE id = ?').bind(id).first();
+  return r ? json({ wish: wishRow(r) }) : notFound();
+}
+
+async function deleteWish(env, id) {
+  await env.DB.prepare('DELETE FROM wish WHERE id = ?').bind(id).run();
+  return json({ ok: true });
 }
 
 /* ─────────────── 사진 자동 분류 ─────────────── */
@@ -849,6 +1028,9 @@ const VENUE_FIELDS = ['name', 'address', 'hours', 'closed', 'admission', 'phone'
 function cleanVenue(o) {
   const out = {};
   for (const k of VENUE_FIELDS) out[k] = String(o?.[k] ?? '').trim().slice(0, k === 'notes' ? 600 : 300);
+  const lat = Number(o?.lat); const lng = Number(o?.lng);
+  // 한국 근처 좌표만 받습니다 (코스 짜기용 대략 위치)
+  if (lat > 32 && lat < 39.5 && lng > 124 && lng < 132) { out.lat = lat; out.lng = lng; }
   out.exhibitions = (Array.isArray(o?.exhibitions) ? o.exhibitions : []).slice(0, 8).map((e) => ({
     title: String(e?.title || '').trim().slice(0, 200),
     period: String(e?.period || '').trim().slice(0, 100),
@@ -881,7 +1063,8 @@ async function refreshVenue(env, name) {
     '  "phone": "대표 전화",',
     '  "website": "공식 홈페이지 주소",',
     `  "exhibitions": [{"title":"전시 제목","period":"기간 (예: 2026.09.01 ~ 2026.12.31)","artist":"작가","desc":"한 줄 소개"}]  ← ${today} 기준 지금 하고 있거나 곧 시작하는 전시만`,
-    '  "notes": "알아두면 좋은 점 (예약 필요, 주차 등) 한두 문장"',
+    '  "notes": "알아두면 좋은 점 (예약 필요, 주차 등) 한두 문장",',
+    '  "lat": 위도 숫자, "lng": 경도 숫자  ← 주소 기준 대략적인 위치 (코스 짜기에 씀)',
     '}',
     '중요: 검색으로 확인한 내용만 쓰세요. 확인하지 못한 값은 빈 문자열 "" 로 두고, 지어내지 마세요. 끝난 전시는 넣지 마세요.',
   ].join('\n');

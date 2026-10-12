@@ -17,6 +17,8 @@ const state = {
   artistQ: '',
   stats: null, // AI 사용량 (첫 화면 게임 카드)
   todo: [], // 가볼 곳
+  wish: [], // 보고 싶은 전시
+  venues: {}, // 찾아 둔 전시관 정보 (이름 → 정보)
   todoEditing: false,
 };
 
@@ -55,10 +57,13 @@ async function loadStats() {
 
 async function loadAll() {
   try {
-    const [a, b, c] = await Promise.all([api('/api/items'), api('/api/artists'), api('/api/todo').catch(() => ({ todo: [] }))]);
+    const [a, b, c, w, v] = await Promise.all([api('/api/items'), api('/api/artists'), api('/api/todo').catch(() => ({ todo: [] })),
+      api('/api/wish').catch(() => ({ wish: [] })), api('/api/venues').catch(() => ({ venues: [] }))]);
     state.items = a.items;
     state.artists = b.artists;
     state.todo = c.todo || [];
+    state.wish = w.wish || [];
+    state.venues = Object.fromEntries((v.venues || []).map((x) => [x.name, x]));
     state.loaded = true;
   } catch (err) {
     state.loaded = true;
@@ -115,6 +120,7 @@ function bindStatic() {
   $('#todoNew').onsubmit = addTodoPlace;
   $('#addBtn').onclick = () => (state.loggedIn ? openAddChoice() : openLogin(() => openAddChoice()));
   $('#loginBtn').onclick = () => (state.loggedIn ? logoutFlow() : openLogin());
+  $('#moreBtn').onclick = openMore;
   $('#adminBtn').onclick = () => (location.href = '/admin');
   $('#artistBack').onclick = () => go('#/artists');
 
@@ -209,13 +215,18 @@ function levelOf(n) {
 
 const num = (n) => Number(n || 0).toLocaleString('ko-KR');
 
+// 관람일: 사진 찍은 날(관람일)이 있으면 그 날, 없으면 올린 날
+const seenAt = (i) => i.visitedAt || i.createdAt;
+const ymd = (ms) => { const d = new Date(ms); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+const toDayMs = (v) => (v ? Date.parse(`${v}T12:00:00`) || 0 : 0);
+
 // 방문 횟수 세기: 같은 전시관에 같은 날 올린 항목들은 한 번 다녀온 것으로 칩니다.
 // 전시관 이름이 없는 항목은 그날 다녀온 전시관(가장 많이 올린 곳)에 붙이고, 그날 전시관이 하나도 없으면 그날 하루를 한 번으로 칩니다.
 // (사진을 여러 항목으로 나눠 올려도 방문 횟수가 부풀지 않도록)
 function uniqueVisits(items) {
   const byDay = new Map();
   for (const i of items) {
-    const day = fmtDate(i.createdAt);
+    const day = fmtDate(seenAt(i));
     if (!byDay.has(day)) byDay.set(day, []);
     byDay.get(day).push(i);
   }
@@ -234,7 +245,7 @@ function uniqueVisits(items) {
       if (top) top.items.push(...loose);
       else venues.set('', { key: `?|${day}`, place: '', at: 0, items: loose });
     }
-    for (const v of venues.values()) { v.at = Math.max(...v.items.map((i) => i.createdAt)); out.push(v); }
+    for (const v of venues.values()) { v.at = Math.max(...v.items.map(seenAt)); out.push(v); }
   }
   return out.sort((a, b) => b.at - a.at);
 }
@@ -280,7 +291,7 @@ function renderHero() {
     <p class="bar-caption">다음 레벨 <b>${esc(L.nextTitle)}</b>까지 전시 ${L.to - visits}번</p>
     <div class="hero-chips">
       ${state.todo.length ? `<button type="button" class="quest-chip" id="questChip">${ICON.pin}가볼 곳 <b>${todoProgress().done}/${state.todo.length}</b></button>` : ''}
-      <span>이번 달 전시 <b>${monthVisits}</b></span><span>영화 <b>${movies}</b></span><span>작가 <b>${state.artists.length}</b></span>
+      <span>이번 달 전시 <b>${monthVisits}</b></span><button type="button" class="hero-chip-btn" id="movieChip">${new Date().getFullYear()}년 영화 <b>${moviesByYear().get(new Date().getFullYear())?.size || 0}편</b> · ${movieLevel(moviesByYear().get(new Date().getFullYear())?.size || 0).title}</button><span>작가 <b>${state.artists.length}</b></span>
     </div>
     <button class="energy" id="energyBtn" type="button">
       <span class="energy-head"><span class="energy-label">${ICON.spark}AI 에너지${isClaude ? ' (Claude)' : ''}</span><b>${enPct == null ? '한도 미정' : `${enPct}%`}</b></span>
@@ -289,6 +300,7 @@ function renderHero() {
     </button>`;
   $('#energyBtn').onclick = openEnergy;
   $('#visitsBtn').onclick = openVisits;
+  $('#movieChip').onclick = openMovies;
   if ($('#questChip')) $('#questChip').onclick = () => go('#/todo');
 
   // 레벨 업 축하 (지난번 본 레벨보다 오르면 한 번)
@@ -308,16 +320,175 @@ function openVisits() {
   const visits = uniqueVisits(exItems);
   openSheet(`
     <h2>전시 다녀온 기록 ${visits.length}번</h2>
-    <p class="hint" style="margin:-8px 0 16px;line-height:1.6">전시 항목 ${exItems.length}개를 <b>같은 날 · 같은 전시관</b>끼리 묶어서 한 번으로 셌어요. 전시관 이름이 없는 항목은 그날 다녀온 전시관에 붙였어요.</p>
-    <ul class="visit-list">${visits.map((v) => `<li>
+    <p class="hint" style="margin:-8px 0 16px;line-height:1.6">전시 항목 ${exItems.length}개를 <b>같은 날(관람일) · 같은 전시관</b>끼리 묶어서 한 번으로 셌어요. 여러 항목으로 나뉜 관람은 <b>한 항목으로 합치기</b>를 누르면 사진이 한곳에 모여요.</p>
+    <ul class="visit-list">${visits.map((v, n) => `<li>
       <div class="visit-date">${fmtDate(v.at)}</div>
       <div class="visit-main">
         <strong>${esc(v.place || '전시관 이름 없음')}</strong>
         <span>${v.items.map((i) => esc(i.title || '제목 없음')).join(' · ')}</span>
+        ${v.items.length > 1 ? `<button class="btn small merge-btn" data-n="${n}" type="button">한 항목으로 합치기 (${v.items.length}개 → 1개)</button>` : ''}
       </div>
       <b class="visit-n">${v.items.length}개</b>
     </li>`).join('')}</ul>
-    <p class="hint" style="margin-top:14px">잘못 묶였으면 그 항목을 열어 전시관 이름을 고쳐 주세요.</p>`);
+    <p class="hint" style="margin-top:14px">잘못 묶였으면 그 항목을 열어 전시관 이름이나 관람일을 고쳐 주세요.</p>`);
+  sheetBody().querySelectorAll('.merge-btn').forEach((b) => (b.onclick = () => needLogin(async () => {
+    const v = visits[Number(b.dataset.n)];
+    // 사진이 가장 많은 항목을 남기고 나머지를 그 안으로 모읍니다.
+    const keep = [...v.items].sort((a, c) => c.images.length - a.images.length || a.createdAt - c.createdAt)[0];
+    setBusy(b, true);
+    try {
+      const { item, removed } = await api('/api/items/merge', { method: 'POST', body: { ids: v.items.map((i) => i.id), keep: keep.id } });
+      state.items = state.items.filter((i) => !removed.includes(i.id)).map((i) => (i.id === item.id ? item : i));
+      renderAll();
+      toast(`"${item.title || v.place}" 한 항목으로 합쳤어요 (사진 ${item.images.length}장)`);
+      openVisits();
+    } catch (err) { toast(err.message); setBusy(b, false); }
+  })));
+}
+
+/* ─────────────── 사진 옮기기 ─────────────── */
+
+// 잘못 묶인 사진 한 장을 골라 다른 항목으로 옮깁니다. 같은 날·같은 전시관 항목을 먼저 보여줍니다.
+function openMove(it, picked = null) {
+  const near = (x) => (fmtDate(seenAt(x)) === fmtDate(seenAt(it)) ? 2 : 0) + (x.place && keyOf(x.place) === keyOf(it.place) ? 1 : 0);
+  const targets = state.items.filter((x) => x.id !== it.id).sort((a, b) => near(b) - near(a) || seenAt(b) - seenAt(a)).slice(0, 40);
+  openSheet(`
+    <h2>사진 옮기기</h2>
+    <p class="hint" style="margin:-8px 0 12px">1. 옮길 사진을 고르고 2. 옮길 항목을 누르세요.</p>
+    <div class="move-photos">${it.images.map((k) => `<button type="button" class="move-ph ${picked === k ? 'on' : ''}" data-k="${k}"><img src="/img/${k}" alt="" /></button>`).join('')}</div>
+    <ul class="options move-targets">${targets.map((x) => `<li><button data-id="${x.id}" ${picked ? '' : 'disabled'}>
+      <span><strong>${esc(x.title || '제목 없음')}</strong><small>${esc([catLabel(x.category), x.place, fmtDate(seenAt(x))].filter(Boolean).join(' · '))}</small></span>
+      <span class="n">${x.images.length}장</span></button></li>`).join('')}</ul>`);
+  sheetBody().querySelectorAll('.move-ph').forEach((b) => (b.onclick = () => openMove(it, b.dataset.k)));
+  sheetBody().querySelectorAll('.move-targets button').forEach((b) => (b.onclick = async () => {
+    if (!picked) return toast('먼저 옮길 사진을 골라 주세요');
+    setBusy(b, true);
+    try {
+      const { from, to } = await api(`/api/items/${it.id}/move`, { method: 'POST', body: { image: picked, to: b.dataset.id } });
+      state.items = state.items.filter((x) => x.id !== it.id || from).map((x) => (from && x.id === from.id ? from : x.id === to.id ? to : x));
+      renderAll();
+      toast(`"${to.title || '항목'}"(으)로 옮겼어요`);
+      if (from && from.images.length) openMove(from); else closeSheet();
+    } catch (err) { toast(err.message); setBusy(b, false); }
+  }));
+}
+
+/* ─────────────── 연도별 영화 기록 (게임) ─────────────── */
+
+// 한 해에 본 영화 수로 칭호를 정합니다. 같은 해 같은 제목은 1편.
+const MOVIE_TITLES = [[0, '영화 쉬는 중'], [1, '영화 입문'], [5, '주말 관객'], [12, '한 달 한 편'], [24, '시네필'], [52, '매주 한 편'], [100, '영화광']];
+
+function moviesByYear() {
+  const map = new Map();
+  for (const i of state.items.filter((x) => x.category === 'movie')) {
+    const y = new Date(seenAt(i)).getFullYear();
+    if (!map.has(y)) map.set(y, new Map());
+    const k = keyOf(i.title) || i.id;
+    const m = map.get(y);
+    if (!m.has(k)) m.set(k, { title: i.title || '제목 없음', at: seenAt(i), items: [] });
+    m.get(k).items.push(i);
+  }
+  return map;
+}
+
+function movieLevel(n) {
+  let i = 0;
+  while (i + 1 < MOVIE_TITLES.length && n >= MOVIE_TITLES[i + 1][0]) i++;
+  const next = MOVIE_TITLES[i + 1];
+  return { lv: i, title: MOVIE_TITLES[i][1], next: next ? { at: next[0], title: next[1] } : null, from: MOVIE_TITLES[i][0] };
+}
+
+function openMovies() {
+  const by = moviesByYear();
+  const now = new Date().getFullYear();
+  const years = [...new Set([now, ...by.keys()])].sort((a, b) => b - a);
+  const max = Math.max(1, ...years.map((y) => by.get(y)?.size || 0));
+  const thisYear = by.get(now)?.size || 0;
+  const L = movieLevel(thisYear);
+  const best = years.reduce((b, y) => ((by.get(y)?.size || 0) > (by.get(b)?.size || 0) ? y : b), now);
+  openSheet(`
+    <h2>연도별 영화 기록</h2>
+    <div class="movie-hero">
+      <div class="lv-badge movie"><small>Lv.</small>${L.lv}</div>
+      <div class="hero-title"><span>${now}년 영화 칭호</span><strong>${L.title}</strong></div>
+      <div class="hero-visits"><b>${thisYear}</b><small>편</small></div>
+    </div>
+    ${L.next ? `<span class="bar movie-bar"><i style="width:${Math.round(((thisYear - L.from) / (L.next.at - L.from)) * 100)}%"></i></span>
+    <p class="hint" style="margin:8px 0 18px">다음 칭호 <b>${L.next.title}</b>까지 ${L.next.at - thisYear}편</p>` : '<p class="hint">최고 칭호예요!</p>'}
+    <div class="year-chart" role="img" aria-label="연도별 본 영화 수">
+      ${years.map((y) => { const n = by.get(y)?.size || 0; return `<div class="year-row ${y === now ? 'now' : ''}">
+        <span class="year-label">${y}</span>
+        <span class="year-track"><i style="width:${Math.round((n / max) * 100)}%"></i></span>
+        <b class="year-n">${n}편</b>${y === best && n ? '<em>최고 기록</em>' : ''}
+      </div>`; }).join('')}
+    </div>
+    <h3 class="section-title" style="margin:24px 0 10px">${now}년에 본 영화</h3>
+    ${thisYear ? `<ul class="visit-list">${[...by.get(now).values()].sort((a, b) => b.at - a.at).map((m) => `<li>
+      <div class="visit-date">${fmtDate(m.at)}</div>
+      <div class="visit-main"><strong>${esc(m.title)}</strong><span>${esc([...new Set(m.items.map((i) => i.artist).filter(Boolean))].join(', '))}</span></div>
+      ${m.items.length > 1 ? `<b class="visit-n">${m.items.length}개</b>` : ''}
+    </li>`).join('')}</ul>` : '<p class="hint">아직 올해 본 영화가 없어요. 영화 분류로 레퍼런스를 넣으면 여기에 쌓여요.</p>'}
+    <p class="hint" style="margin-top:14px">같은 해에 같은 제목은 1편으로 셌어요. 연도는 관람일(없으면 올린 날) 기준이에요.</p>`);
+}
+
+/* ─────────────── 더보기: 백업 · 되살리기 · 홈 화면 앱 ─────────────── */
+
+let installPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installPrompt = e; });
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  navigator.serviceWorker.register('/sw.js').catch(() => {});
+}
+
+function openMore() {
+  const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  openSheet(`
+    <h2>더보기</h2>
+    <ul class="options">
+      <li><button data-a="export">백업 받기 <span class="n">글·작가·계획·가볼 곳</span></button></li>
+      <li><button data-a="import">백업에서 되살리기</button></li>
+      ${standalone ? '' : '<li><button data-a="install">휴대폰 홈 화면에 앱으로 추가</button></li>'}
+      <li><button data-a="login">${state.loggedIn && !state.open ? '로그아웃' : '로그인'}</button></li>
+    </ul>
+    <input type="file" id="importInput" accept="application/json,.json" hidden />
+    <div id="moreInfo"></div>`);
+  const info = (html) => { $('#moreInfo').innerHTML = `<div class="more-info">${html}</div>`; };
+  sheetBody().querySelectorAll('[data-a]').forEach((b) => (b.onclick = async () => {
+    const a = b.dataset.a;
+    if (a === 'export') {
+      if (!state.loggedIn) return openLogin(openMore);
+      // 받은 파일은 휴대폰 '파일' 앱이나 컴퓨터 '다운로드' 폴더에 저장돼요.
+      const link = document.createElement('a');
+      link.href = '/api/export';
+      link.download = '';
+      document.body.appendChild(link); link.click(); link.remove();
+      info('백업 파일을 받았어요. 사진 파일은 크기 때문에 빠지고, 사진 이름표만 들어가요 (사진은 사이트에 그대로 남아요). 한 달에 한 번쯤 받아 두면 좋아요.');
+    }
+    if (a === 'import') {
+      if (!state.loggedIn) return openLogin(openMore);
+      $('#importInput').click();
+    }
+    if (a === 'install') {
+      if (installPrompt) { installPrompt.prompt(); installPrompt = null; return; }
+      info(ios
+        ? '아이폰: 사파리 아래쪽 <b>공유 단추(네모에 위 화살표)</b> → <b>홈 화면에 추가</b> → 추가. 홈 화면의 "레퍼런스" 아이콘으로 앱처럼 열려요.'
+        : '안드로이드·크롬: 오른쪽 위 <b>⋮</b> → <b>홈 화면에 추가</b>(또는 앱 설치) → 설치.');
+    }
+    if (a === 'login') { await closeSheet(); state.loggedIn && !state.open ? logoutFlow() : openLogin(); }
+  }));
+  $('#importInput').onchange = async (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      const data = JSON.parse(await file.text());
+      const { counts } = await api('/api/import', { method: 'POST', body: data });
+      info(`되살렸어요: ${Object.entries(counts).map(([k, n]) => `${k} ${n}`).join(' · ')}. 같은 자료는 백업 내용으로 덮어쓰고, 지금 있는 다른 자료는 그대로 둬요.`);
+      await loadAll();
+    } catch (err) {
+      info(`되살리지 못했어요: ${esc(err.message || '파일을 읽지 못했어요')}`);
+    }
+  };
 }
 
 function openEnergy() {
@@ -367,10 +538,10 @@ const VENUE_STALE = 7 * 24 * 3600 * 1000; // 7일 지나면 새로 찾기
 
 async function openVenue(name, keys = null) {
   const mine = (keys ? state.items.filter((i) => placeMatches(i.place, keys)) : state.items.filter((i) => i.place === name))
-    .sort((a, b) => b.createdAt - a.createdAt);
+    .sort((a, b) => seenAt(b) - seenAt(a));
   const head = `
     <h2 class="venue-title" id="vTitle">${esc(name)}</h2>
-    <p class="venue-mine">${mine.length ? `내가 다녀온 기록 <b>${uniqueVisits(mine).length}번</b> · 마지막 ${fmtDate(mine[0].createdAt)}` : '아직 기록이 없어요'}</p>
+    <p class="venue-mine">${mine.length ? `내가 다녀온 기록 <b>${uniqueVisits(mine).length}번</b> · 마지막 ${fmtDate(seenAt(mine[0]))}` : '아직 기록이 없어요'}</p>
     <div class="venue-maps">
       <a class="btn small ghost" href="https://map.naver.com/p/search/${encodeURIComponent(name)}" target="_blank" rel="noopener noreferrer">${ICON.pin}네이버 지도</a>
       <a class="btn small ghost" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name)}" target="_blank" rel="noopener noreferrer">${ICON.pin}구글 지도</a>
@@ -386,6 +557,7 @@ async function openVenue(name, keys = null) {
       $('#vRefresh').onclick = () => refresh();
       return;
     }
+    state.venues[name] = v;
     const i = v.info || {};
     if (i.name && $('#vTitle')) $('#vTitle').textContent = i.name;
     const row = (label, val, html) => (val ? `<div class="vrow"><span>${label}</span><div>${html || esc(val)}</div></div>` : '');
@@ -401,16 +573,29 @@ async function openVenue(name, keys = null) {
       </div>
       ${!i.address && !i.hours && !i.closed ? '<p class="hint">주소·운영시간을 확인하지 못했어요. 지도에서 찾아 주세요.</p>' : ''}
       <h3 class="section-title" style="margin:24px 0 10px">지금 하는 전시</h3>
-      ${(i.exhibitions || []).length ? `<ul class="vex">${i.exhibitions.map((e) => `<li>
+      ${(i.exhibitions || []).length ? `<ul class="vex">${i.exhibitions.map((e, n) => `<li>
           <strong>${esc(e.title)}</strong>
           <span>${esc([e.period, e.artist].filter(Boolean).join(' · '))}</span>
           ${e.desc ? `<p>${esc(e.desc)}</p>` : ''}
+          ${state.wish.some((w) => w.title === e.title && w.venue === name)
+            ? '<em class="wish-done">보고 싶은 전시에 담았어요</em>'
+            : `<button class="btn small wish-add" data-n="${n}" type="button">보고 싶어요</button>`}
         </li>`).join('')}</ul>` : '<p class="hint">진행 중인 전시를 확인하지 못했어요. 홈페이지에서 확인해 주세요.</p>'}
       ${i.notes ? `<p class="vnotes">${esc(i.notes)}</p>` : ''}
       ${(v.sources || []).length ? `<ul class="sources">${v.sources.map((s) => `<li><a href="${esc(s.uri)}" target="_blank" rel="noopener noreferrer">${esc(s.title)}</a></li>`).join('')}</ul>` : ''}
       <p class="venue-foot">${fmtDate(v.updatedAt)}에 AI가 ${v.sources?.length ? '구글 검색으로 ' : ''}정리한 정보예요. 틀릴 수 있으니 가기 전에 홈페이지에서 꼭 확인하세요.</p>
       <button class="btn ghost block" id="vRefresh" type="button">${ICON.spark}정보 새로 찾기</button>`;
     $('#vRefresh').onclick = () => refresh();
+    body.querySelectorAll('.wish-add').forEach((b) => (b.onclick = () => needLogin(async () => {
+      const e = i.exhibitions[Number(b.dataset.n)];
+      try {
+        const { wish } = await api('/api/wish', { method: 'POST', body: { venue: name, title: e.title, period: e.period, artist: e.artist } });
+        if (!state.wish.some((w) => w.id === wish.id)) state.wish.push(wish);
+        toast('보고 싶은 전시에 담았어요');
+        show(v);
+        if (!$('#view-todo').hidden) renderTodo();
+      } catch (err) { toast(err.message); }
+    })));
   };
 
   const refresh = async () => {
@@ -467,8 +652,8 @@ function renderTodo() {
     const list = state.todo.filter((t) => (t.area || '기타') === area);
     const n = list.filter((t) => t.done || visitsOf(t).length).length;
     return `<section class="quest-group">
-      <h3 class="quest-area">${esc(area)} <span>${n}/${list.length}</span></h3>
-      <ul class="quest-list">${list.map((t) => {
+      <h3 class="quest-area">${esc(area)} <span>${n}/${list.length}</span>${list.length > 1 ? `<button class="course-btn" data-area="${esc(area)}" type="button">${ICON.pin}코스 짜기</button>` : ''}</h3>
+      <ul class="quest-list">${list.filter((t) => !state.todoOpenOnly || openOn(t, new Date()) !== false).map((t) => {
         const v = visitsOf(t);
         const ok = v.length || t.done;
         return `<li class="${ok ? 'ok' : ''}">
@@ -476,19 +661,181 @@ function renderTodo() {
           <button class="quest-main" data-id="${t.id}" type="button">
             <strong>${esc(t.name)}</strong>
             <span>${v.length ? `다녀옴 ${v.length}번 · 마지막 ${fmtDate(Math.max(...v.map((x) => x.at)))}` : t.done ? '다녀옴 (직접 표시)' : '운영시간 · 지금 하는 전시 보기'}</span>
+            ${weekStrip(t)}
           </button>
           ${state.todoEditing ? `<button class="quest-del" data-id="${t.id}" type="button" aria-label="빼기">${ICON.x}</button>` : ICON.chevron}
         </li>`;
       }).join('')}</ul>
     </section>`;
   }).join('');
+  $('#todoGroups').insertAdjacentHTML('afterbegin', wishSection() + todoTools());
   const find = (el) => state.todo.find((t) => t.id === el.dataset.id);
+  $('#todoGroups').querySelectorAll('.course-btn').forEach((b) => (b.onclick = () => openCourse(b.dataset.area)));
+  if ($('#openOnly')) $('#openOnly').onclick = () => { state.todoOpenOnly = !state.todoOpenOnly; renderTodo(); };
+  if ($('#fetchAll')) $('#fetchAll').onclick = () => needLogin(fetchAllVenues);
+  $('#todoGroups').querySelectorAll('.wish-check').forEach((b) => (b.onclick = () => needLogin(async () => {
+    const w = state.wish.find((x) => x.id === b.dataset.id);
+    try {
+      const { wish } = await api(`/api/wish/${w.id}`, { method: 'PUT', body: { done: !w.done } });
+      state.wish = state.wish.map((x) => (x.id === w.id ? wish : x));
+      renderTodo();
+    } catch (err) { toast(err.message); }
+  })));
+  $('#todoGroups').querySelectorAll('.wish-del').forEach((b) => (b.onclick = () => needLogin(async () => {
+    try {
+      await api(`/api/wish/${b.dataset.id}`, { method: 'DELETE' });
+      state.wish = state.wish.filter((x) => x.id !== b.dataset.id);
+      renderTodo();
+    } catch (err) { toast(err.message); }
+  })));
+  $('#todoGroups').querySelectorAll('.wish-venue').forEach((b) => (b.onclick = () => openVenue(b.dataset.v)));
   $('#todoGroups').querySelectorAll('.quest-main').forEach((b) => (b.onclick = () => { const t = find(b); openVenue(venueQuery(t.name), t.keys?.length ? t.keys : [t.name]); }));
   $('#todoGroups').querySelectorAll('.quest-check').forEach((b) => (b.onclick = () => needLogin(() => toggleTodo(find(b)))));
   $('#todoGroups').querySelectorAll('.quest-del').forEach((b) => (b.onclick = () => needLogin(() => removeTodo(find(b)))));
 }
 
 const needLogin = (fn) => (state.loggedIn ? fn() : openLogin(fn));
+
+/* ── 이번 주 열린 곳 ── */
+const DAYS = '일월화수목금토';
+const venueOfTodo = (t) => state.venues[venueQuery(t.name)] || null;
+
+// 휴관일 글에서 쉬는 요일을 찾습니다: "매주 월요일" → 월, "월·화요일 휴관" → 월·화. 모르면 null.
+function closedDays(text) {
+  const t = String(text || '');
+  if (!t.trim()) return null;
+  const out = new Set();
+  for (const m of t.matchAll(/((?:[월화수목금토일][\s·,/및와]*)+)요일/g)) for (const ch of m[1]) { const i = DAYS.indexOf(ch); if (i >= 0) out.add(i); }
+  if (/연중무휴|휴관일?\s*없/.test(t)) return new Set();
+  return out;
+}
+
+// 그 날 열려 있는지: true / false / null(모름). 공휴일·명절 휴관은 반영하지 못합니다.
+function openOn(t, date) {
+  const v = venueOfTodo(t);
+  if (!v) return null;
+  const closed = closedDays(v.info?.closed);
+  if (!closed) return null;
+  return !closed.has(date.getDay());
+}
+
+function weekStrip(t) {
+  const v = venueOfTodo(t);
+  if (!v) return '';
+  const today = new Date();
+  return `<span class="week-strip" aria-label="이번 주 여는 날">${[...Array(7)].map((_, k) => {
+    const d = new Date(today); d.setDate(today.getDate() + k);
+    const o = openOn(t, d);
+    return `<i class="${o === true ? 'open' : o === false ? 'closed' : 'unknown'}${k === 0 ? ' today' : ''}" title="${d.getMonth() + 1}/${d.getDate()}">${DAYS[d.getDay()]}</i>`;
+  }).join('')}</span>`;
+}
+
+function todoTools() {
+  const missing = state.todo.filter((t) => !venueOfTodo(t));
+  return `<div class="todo-tools">
+    <button type="button" class="chip ${state.todoOpenOnly ? 'on' : ''}" id="openOnly">오늘 열린 곳만</button>
+    ${missing.length ? `<button type="button" class="chip" id="fetchAll">${ICON.spark}정보 없는 ${missing.length}곳 찾기 (AI ${missing.length}번)</button>` : ''}
+  </div>
+  <p class="hint" style="margin:6px 0 0">초록 = 여는 날 · 빨강 = 휴관일 · 회색 = 모름. 공휴일·명절 휴관은 빠질 수 있어요.</p>`;
+}
+
+// 정보가 없는 가볼 곳을 차례로 찾습니다. AI 한도(분당 4번)에 맞춰 16초 간격.
+async function fetchAllVenues() {
+  const missing = state.todo.filter((t) => !venueOfTodo(t));
+  if (!missing.length) return;
+  const btn = $('#fetchAll');
+  if (btn) { btn.disabled = true; }
+  let done = 0;
+  for (const t of missing) {
+    const name = venueQuery(t.name);
+    if (btn) btn.textContent = `찾는 중… ${done}/${missing.length} (${name})`;
+    try {
+      const { venue } = await api(`/api/venues/${encodeURIComponent(name)}/refresh`, { method: 'POST' });
+      state.venues[name] = venue;
+      done++;
+    } catch (err) {
+      toast(`${name}: ${err.message}`);
+      if (err.status === 429) break; // 한도에 걸리면 멈춤
+    }
+    if (!$('#view-todo').hidden) renderTodo();
+    if (done < missing.length) await new Promise((r) => setTimeout(r, 16000));
+  }
+  loadStats();
+  toast(`전시관 정보 ${done}곳을 찾았어요`);
+  if (!$('#view-todo').hidden) renderTodo();
+}
+
+/* ── 코스 짜기 ── */
+const ANGUK = { name: '안국역', lat: 37.5765, lng: 126.9855 };
+function km(a, b) {
+  const R = 6371; const r = (x) => (x * Math.PI) / 180;
+  const dLat = r(b.lat - a.lat); const dLng = r(b.lng - a.lng);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+// 가까운 곳부터 차례로 잇는 간단한 코스 (위치는 AI가 찾은 대략 좌표라 실제 길과 다를 수 있음)
+function openCourse(area) {
+  const list = state.todo.filter((t) => (t.area || '기타') === area);
+  const withPos = list.map((t) => ({ t, name: venueQuery(t.name), v: venueOfTodo(t) }))
+    .map((x) => ({ ...x, lat: x.v?.info?.lat, lng: x.v?.info?.lng }));
+  const known = withPos.filter((x) => typeof x.lat === 'number');
+  const unknown = withPos.filter((x) => typeof x.lat !== 'number');
+  const start = /안국/.test(area) ? ANGUK : known[0] || null;
+  const route = [];
+  let cur = start; const left = [...known];
+  while (left.length && cur) {
+    left.sort((a, b) => km(cur, a) - km(cur, b));
+    const next = left.shift();
+    route.push({ ...next, dist: km(cur, next) });
+    cur = next;
+  }
+  const total = route.reduce((a, r) => a + r.dist, 0);
+  const walking = total <= 5;
+  const today = new Date();
+  const names = route.map((r) => r.name);
+  const origin = start === ANGUK ? '안국역' : names[0];
+  const stops = start === ANGUK ? names : names.slice(1);
+  const gmap = stops.length ? `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(stops[stops.length - 1])}${stops.length > 1 ? `&waypoints=${encodeURIComponent(stops.slice(0, -1).join('|'))}` : ''}&travelmode=${walking ? 'walking' : 'transit'}` : '';
+  openSheet(`
+    <h2>${esc(area)} 코스</h2>
+    ${route.length ? `<p class="hint" style="margin:-8px 0 14px">${start === ANGUK ? '안국역에서 출발해 ' : ''}가까운 곳부터 이었어요 · 직선거리 약 ${total.toFixed(1)}km${walking ? ` · 걸어서 ${Math.round(total * 15)}분쯤 + 관람` : ''}</p>
+    <ol class="course">${route.map((r, k) => {
+      const o = openOn(r.t, today);
+      return `<li><span class="course-n">${k + 1}</span><div><strong>${esc(r.name)}</strong>
+        <small>${r.dist < 1 ? `${Math.round(r.dist * 1000)}m` : `${r.dist.toFixed(1)}km`} · ${o === false ? '<b class="closed">오늘 휴관</b>' : o === true ? '오늘 열어요' : '오늘 여는지 모름'}</small></div>
+        <button class="text-btn small" data-v="${esc(r.name)}" type="button">정보</button></li>`;
+    }).join('')}</ol>
+    <a class="btn block" href="${gmap}" target="_blank" rel="noopener noreferrer" style="margin-top:16px">${ICON.pin}구글 지도로 ${walking ? '걷는' : '대중교통'} 길 보기</a>` : '<p class="hint">아직 위치를 아는 곳이 없어요. 아래에서 정보를 찾으면 코스를 짤 수 있어요.</p>'}
+    ${unknown.length ? `<p class="hint" style="margin-top:16px">위치를 몰라서 빠진 곳: ${unknown.map((u) => esc(u.name)).join(', ')} — 장소를 눌러 정보를 찾거나 '정보 없는 곳 찾기'를 눌러 주세요.</p>` : ''}
+    <p class="hint">위치는 AI가 찾은 대략 좌표라 실제 길과 다를 수 있어요. 가기 전에 휴관일을 한 번 더 확인하세요.</p>`);
+  sheetBody().querySelectorAll('[data-v]').forEach((b) => (b.onclick = () => openVenue(b.dataset.v)));
+}
+
+/* ── 보고 싶은 전시 ── */
+function dday(ends) {
+  if (!ends) return null;
+  const end = new Date(`${ends}T23:59:59`);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  return Math.floor((end - today) / 86400000);
+}
+
+function wishSection() {
+  if (!state.wish.length) return '';
+  const list = [...state.wish].sort((a, b) => a.done - b.done || (dday(a.ends) ?? 9999) - (dday(b.ends) ?? 9999));
+  return `<section class="wish-box">
+    <h3 class="quest-area">보고 싶은 전시 <span>${state.wish.filter((w) => !w.done).length}</span></h3>
+    <ul class="quest-list">${list.map((w) => {
+      const d = dday(w.ends);
+      const tag = w.done ? '<em class="dday seen">봤어요</em>' : d == null ? '' : d < 0 ? '<em class="dday over">끝남</em>' : `<em class="dday ${d <= 7 ? 'soon' : ''}">${d === 0 ? '오늘 끝' : `D-${d}`}</em>`;
+      return `<li class="${w.done ? 'ok' : ''}">
+        <button class="quest-check wish-check" data-id="${w.id}" type="button" aria-label="봤어요">${w.done ? '<svg viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></svg>' : ''}</button>
+        <button class="quest-main wish-venue" data-v="${esc(w.venue)}" type="button"><strong>${esc(w.title)} ${tag}</strong><span>${esc([w.venue, w.period].filter(Boolean).join(' · '))}</span></button>
+        ${state.todoEditing ? `<button class="quest-del wish-del" data-id="${w.id}" type="button" aria-label="빼기">${ICON.x}</button>` : ''}
+      </li>`;
+    }).join('')}</ul>
+  </section>`;
+}
 
 async function toggleTodo(t) {
   try {
@@ -621,7 +968,7 @@ function cardHtml(it) {
       ${it.title ? `<p class="item-title">${esc(it.title)}</p>` : ''}
       ${it.artist || !state.cat ? `<div class="item-artist">${[state.cat ? '' : catLabel(it.category), it.artist].filter(Boolean).map(esc).join(' · ')}</div>` : ''}
       ${it.memo ? `<div class="item-memo">${esc(it.memo)}</div>` : ''}
-      <div class="item-sub">${[it.place, fmtDate(it.createdAt)].filter(Boolean).map(esc).join(' · ')}</div>
+      <div class="item-sub">${[it.place, fmtDate(seenAt(it))].filter(Boolean).map(esc).join(' · ')}</div>
     </div>
   </button>`;
 }
@@ -778,7 +1125,8 @@ function openDetail(id) {
     ${it.source ? (/^https?:\/\//i.test(it.source)
       ? `<a class="detail-source" href="${esc(it.source)}" target="_blank" rel="noopener noreferrer">출처 · ${esc(it.source)}</a>`
       : `<span class="detail-source">출처 · ${esc(it.source)}</span>`) : ''}
-    <p class="detail-date">작성 ${fmtDate(it.createdAt)}${it.updatedAt !== it.createdAt ? ` · 수정 ${fmtDate(it.updatedAt)}` : ''}</p>
+    <p class="detail-date">${it.visitedAt ? `관람 ${fmtDate(it.visitedAt)} · ` : ''}작성 ${fmtDate(it.createdAt)}${it.updatedAt !== it.createdAt ? ` · 수정 ${fmtDate(it.updatedAt)}` : ''}</p>
+    ${imgs.length ? '<button class="btn ghost block" id="dMove" type="button" style="margin-top:16px">사진을 다른 항목으로 옮기기</button>' : ''}
     <div class="btn-row detail-actions">
       <button class="btn danger" id="dDel">삭제</button>
       <button class="btn" id="dEdit">수정하기</button>
@@ -793,6 +1141,7 @@ function openDetail(id) {
     }, { passive: true });
   }
   if ($('#dPlace')) $('#dPlace').onclick = () => openVenue(it.place);
+  if ($('#dMove')) $('#dMove').onclick = () => needLogin(() => openMove(it));
   if ($('#dArtist')) $('#dArtist').onclick = async () => { await closeSheet(); go(`#/artist/${encodeURIComponent(it.artist)}`); };
   sheetBody().querySelectorAll('[data-tag]').forEach((b) => (b.onclick = async () => {
     await closeSheet();
@@ -856,6 +1205,8 @@ function openEditor(it = null) {
       <div>
         <label class="label" for="fPlace" id="fPlaceLabel">전시관 이름</label>
         <input class="field" id="fPlace" maxlength="100" list="placeNames" value="${esc(it?.place || '')}" />
+        <label class="label" for="fSeen" style="margin-top:14px">관람일 <span class="hint" style="font-weight:500">사진 찍은 날이 있으면 자동으로 채워져요</span></label>
+        <input class="field" id="fSeen" type="date" value="${it?.visitedAt ? ymd(it.visitedAt) : ''}" max="${ymd(Date.now())}" />
         <datalist id="placeNames">${[...new Set(state.items.map((x) => x.place).filter(Boolean))].map((n) => `<option value="${esc(n)}"></option>`).join('')}</datalist>
       </div>
       <div>
@@ -915,8 +1266,10 @@ function openEditor(it = null) {
   renderCat();
 
   $('#fileInput').onchange = async (e) => {
-    const files = [...e.target.files].slice(0, 20 - draft.images.length);
+    const files = [...e.target.files].slice(0, 60 - draft.images.length);
     e.target.value = '';
+    // 관람일이 비어 있으면 첫 사진의 찍은 날로 채웁니다.
+    if (!$('#fSeen').value && files[0]) photoDate(files[0]).then((d) => { if (d && $('#fSeen') && !$('#fSeen').value) $('#fSeen').value = d.slice(0, 10); });
     await Promise.all(files.map(async (file) => {
       const preview = URL.createObjectURL(file);
       draft.images.push(preview);
@@ -1035,6 +1388,7 @@ function openEditor(it = null) {
     const body = {
       category: draft.category,
       place: $('#fPlace').value,
+      visitedAt: toDayMs($('#fSeen').value),
       title: $('#fTitle').value,
       artist: $('#fArtist').value,
       memo: $('#fMemo').value,
@@ -1228,7 +1582,7 @@ async function runBulk(files) {
         // 같은 관람 항목이 이미 있으면 사진과 태그만 더합니다. (이미 적어 둔 글은 그대로)
         const body = {
           ...same,
-          images: [...same.images, ...keys].slice(0, 20),
+          images: [...same.images, ...keys].slice(0, 60),
           tags: [...new Set([...same.tags, ...(g.tags || [])])].slice(0, 30),
           artist: same.artist || g.artist, place: same.place || g.place,
         };
@@ -1237,7 +1591,8 @@ async function runBulk(files) {
         r.text = `이미 있던 항목에 ${keys.length}장 더함`;
         merged++;
       } else {
-        const body = { category: g.category, title: g.title || (ok[g.photos[0]].file.name.replace(/\.[^.]+$/, '')), artist: g.artist, place: g.place, memo: g.memo, tags: g.tags, images: keys, source: '' };
+        const dates = g.photos.map((i) => ok[i].date).filter(Boolean).sort();
+        const body = { category: g.category, title: g.title || (ok[g.photos[0]].file.name.replace(/\.[^.]+$/, '')), artist: g.artist, place: g.place, memo: g.memo, tags: g.tags, images: keys, source: '', visitedAt: dates.length ? toDayMs(dates[0].slice(0, 10)) : 0 };
         const { item } = await api('/api/items', { method: 'POST', body });
         state.items.unshift(item);
         g.artist = item.artist;

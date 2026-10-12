@@ -7,7 +7,7 @@
 - 작업을 마무리할 때는 맨 마지막에 실제 사이트 주소를 적습니다.
   - 사이트: https://zeminism-archive.pages.dev
   - 관리(작업 계획): https://zeminism-archive.pages.dev/admin
-  - 지금 쓰는 판(Claude 아티팩트): https://claude.ai/artifact/WTetfftZg4dor2pEFnf2Zs — `app/` 고친 뒤 `python3 artifact/build.py` 로 다시 만들고 같은 파일 경로로 올림
+  - Claude 아티팩트 판: https://claude.ai/artifact/WTetfftZg4dor2pEFnf2Zs — 2026-10-12 백업·합치기·사진 옮기기·보고 싶은 전시 기능부터는 adapter.js 가 지원하지 않아 그 전 판에서 멈춤. 실제로 쓰는 곳은 Cloudflare 사이트.
 
 ## 디자인
 - 토스 느낌: 흰 바탕, 회색 면(#F2F4F6), 파란 단추(#3182F6), 글자 #191F28, 큰 둥근 모서리, Pretendard 글꼴.
@@ -23,9 +23,13 @@
 - 가볼 곳 목록은 사장님이 사진으로 준 17곳 (`_worker.js` TODO_SEED, 처음 한 번만 넣음).
 - Gemini 무료 한도 (2026-10-12 사장님 AI Studio 화면): 3.6 Flash·3.8 Flash 각각 분당 5회, 하루 20회, 분당 25만 토큰. 모델마다 따로라서 3.6 → 3.8 로 넘어감. 앱 기본 한도는 분당 4회·하루 36회 (DEFAULT_LIMITS).
 - 실패하면 연달아 다른 방식으로 다시 묻지 않기 (503 뒤 연속 요청으로 429 났던 일). 503 은 2초·5초 기다렸다 같은 모델로, 429 는 다른 모델로.
+- 관람일(`items.visited_at`): EXIF 찍은 날로 자동 채움. 방문 횟수·영화 연도는 관람일 → 없으면 올린 날(createdAt).
+- 영화 연도별 기록: 같은 해 같은 제목은 1편. 칭호는 app.js MOVIE_TITLES.
+- 백업(`/api/export`, `/api/import`)은 표 내용만. 사진(KV)은 들어가지 않음.
 - 표는 `_worker.js` 의 ensureSchema 가 자동으로 만듭니다. 칸을 추가할 때는 ALTER 를 따로 넣어야 합니다.
 
 ## 배포
+- 기본 브랜치는 `main` (2026-10-12 작업 브랜치에서 만듦). 배포 워크플로는 어느 브랜치로든 Run workflow 가능.
 - 자동 아님. GitHub Actions → "사이트 배포 (레퍼런스)" → Run workflow.
 - 이사·청소 사이트(zeminismharu/8285-html)와 같은 Cloudflare 계정, 같은 방식.
 
