@@ -1080,6 +1080,9 @@ function renderArtistKeys() {
     renderGrid();
   }));
   if ($('#akOpen')) $('#akOpen').onclick = () => go(`#/artist/${encodeURIComponent(state.artist)}`);
+  // 다시 그려도 고른 작가가 화면 안에 보이도록 (세로로는 움직이지 않음)
+  const on = row.querySelector('.artist-key.on');
+  if (on && (on.offsetLeft < row.scrollLeft || on.offsetLeft + on.offsetWidth > row.scrollLeft + row.clientWidth)) row.scrollLeft = on.offsetLeft - 8;
 }
 
 function renderFilterLabels() {
