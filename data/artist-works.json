@@ -1,0 +1,47 @@
+[
+  {
+    "artist": "김 크리스틴 선",
+    "works": [
+      { "title": "Degrees of My Deaf Rage in the Art World", "titleKo": "미술계에서 내 농인 분노의 각도", "year": "2018", "note": "분노의 정도를 각도로 그린 목탄 드로잉 연작 중 하나", "match": ["rage", "degrees"],
+        "pages": ["https://whitney.org/exhibitions/christine-sun-kim-all-day-all-night/art?section=1", "https://whitney.org/exhibitions/2019-biennial/art?section=38", "https://en.wikipedia.org/wiki/Christine_Sun_Kim", "https://art21.org/artist/christine-sun-kim/"] },
+      { "title": "Moon Mind", "titleKo": "달 마음", "year": "2026", "note": "갤러리현대 개인전 《달 마음》의 모양 캔버스 회화", "match": ["moon", "mind", "shaped"],
+        "pages": ["https://creatrip.com/en/news-feed/24937", "https://www.koreaherald.com/article/10676689", "https://www.family.style/articles/seoul-pin-drop-recommendations-christine-sun-kim", "https://ghebaly.com/exhibitions/197/works/artworks-10519-christine-sun-kim-mind-in-rock-2025/", "https://ghebaly.com/exhibitions/197/works/artworks-10517-christine-sun-kim-mind-rock-2025/"] }
+    ]
+  },
+  {
+    "artist": "박서보",
+    "works": [
+      { "title": "Ecriture No. 080222", "titleKo": "묘법 No. 080222", "year": "2008", "note": "한지를 쓴 후기 색채 묘법", "match": ["080222", "ecriture"],
+        "pages": ["https://www.lacma.org/node/40489", "https://collections.lacma.org/node/40489"] },
+      { "title": "Ecriture (Pencil)", "titleKo": "연필 묘법", "year": "1970년대", "note": "젖은 캔버스에 연필 선을 반복한 초기 묘법", "match": ["ecriture", "묘법", "no"],
+        "pages": ["https://kukjegallery.com/exhibitions/view?seq=117", "https://m.kukjegallery.com/artfair/work/65/32", "https://m.kukjegallery.com/exhibition/234", "https://ocula.com/magazine/spotlights/park-seo-bos-ecritures-are-evolving-with-the-times/", "https://www.dreamideamachine.com/?p=121148", "https://www.koreaherald.com/article/3234924"] }
+    ]
+  },
+  {
+    "artist": "김보희",
+    "works": [
+      { "title": "Towards", "titleKo": "투워즈", "year": "2025", "note": "캔버스에 채색, 162 × 130 cm", "match": ["towards", "kim", "bohie"],
+        "pages": ["https://privateviews.artlogic.net/2/d3f46f48d9b4d5d8a7d80a", "https://mobile.newsis.com/view/NISX20250831_0003309555"] },
+      { "title": "Towards", "titleKo": "투워즈 (하늘과 바다)", "year": "2023", "note": "하늘과 바다를 그린 두 캔버스를 이어 붙인 풍경", "match": ["towards", "김보희"],
+        "pages": ["https://m.seoul.co.kr/news/2023/06/19/20230619500028", "https://heypop.kr/n/56562", "https://www.harpersbazaar.co.kr/article/78706", "https://www.esquirekorea.co.kr/article/78936", "https://brunch.co.kr/@@bVPN/295"] }
+    ]
+  },
+  {
+    "artist": "김세은",
+    "works": [
+      { "title": "Oksu", "titleKo": "옥수", "year": "2026", "note": "옥수역 사진에서 출발한 대형 회화", "match": ["oksu", "옥수"],
+        "pages": ["https://kukjegallery.com/exhibitions/view?seq=296", "https://ocula.com/art-galleries/kukje-gallery/exhibitions/seeun-kim-pictos-and-pitwall/", "https://www.harpersbazaar.co.kr/article/1886922", "https://londonkoreanlinks.net/?p=131306"] },
+      { "title": "Frame and Eye", "titleKo": "틀과 눈", "year": "2026", "note": "집에서 작업실까지 도로 교통 카메라 장면으로 그린 회화", "match": ["frame", "eye", "틀과"],
+        "pages": ["https://kukjegallery.com/exhibitions/view?seq=296", "https://ocula.com/art-galleries/kukje-gallery/exhibitions/seeun-kim-pictos-and-pitwall/", "https://www.harpersbazaar.co.kr/article/1886922"] }
+    ]
+  },
+  {
+    "artist": "박혜수",
+    "works": [
+      { "title": "The Evaporated", "titleKo": "증발자들", "year": "2024", "note": "사라진 사람들의 사연으로 만든 4채널 영상 설치", "match": ["증발", "evapor"],
+        "pages": ["https://www.ftoday.co.kr/news/articleView.html?idxno=364225", "https://supple.kr/news/cmsky9r14006411tnk0p1sl3s", "http://k-artnow.com/ko/posts.php?co_id=1786788855", "https://www.newswhoplus.com/news/articleView.html?idxno=68959", "https://thepress1.com/bbs/board.php?bo_table=news&wr_id=11871", "http://www.kumhomuseum.com/designer/skin/02/01.html"] },
+      { "title": "We, Who We Don't Know", "titleKo": "우리가 모르는 우리", "year": "2019~", "note": "설문과 대화로 이어 온 대화 프로젝트 네 번째 연작", "match": ["우리가", "모르는"],
+        "pages": ["https://www.ftoday.co.kr/news/articleView.html?idxno=364225", "https://supple.kr/news/cmsky9r14006411tnk0p1sl3s", "https://www.newswhoplus.com/news/articleView.html?idxno=68959", "https://thepress1.com/bbs/board.php?bo_table=news&wr_id=11871"] }
+    ]
+  }
+]

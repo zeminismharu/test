@@ -1,0 +1,23 @@
+name: 작가 대표작 넣기 (사람이 고른 목록)
+
+# data/artist-works.json 에 적은 대표작을 사이트에 넣습니다.
+#   list  : 작품 페이지마다 그림 후보(주소·설명)를 로그로 보여주기만 (아무것도 바꾸지 않음)
+#   apply : 각 작품의 image 주소 그림을 내려받아 사이트 사진 저장소에 올리고 대표작으로 저장
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'list 또는 apply'
+        required: true
+        default: 'list'
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 실행
+        env:
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          MODE: ${{ github.event.inputs.mode }}
+        run: node scripts/artist-works.mjs
