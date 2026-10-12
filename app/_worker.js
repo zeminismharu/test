@@ -22,6 +22,7 @@
  *   GET    /api/export · POST /api/import  로그인. 백업 받기 · 되살리기
  *   GET/POST/PUT/DELETE /api/wish          보고 싶은 전시 (쓰기는 로그인)
  *   GET    /api/stats                     공개. 오늘·이번 달 AI 사용량과 하루 한도 (첫 화면 게임 카드)
+ *   POST   /api/water                     로그인. 첫 화면 화분에 오늘 물 주기 (하루 한 번, 서버에 저장 → 어느 기기에서나 같음)
  *   PUT    /api/settings                  로그인. { aiDailyTokens, aiDailyRequests } 하루 한도 정하기
  *   POST   /api/group    { photos }       로그인. 여러 장을 같이 보고 같은 관람(같은 전시·영화)끼리 묶기
  *   GET    /api/artists                   공개. 작가 목록 + 설명
@@ -142,6 +143,9 @@ async function route(request, env, parts) {
   }
 
   if (head === 'stats' && !id) return m === 'GET' ? getStats(env) : methodNotAllowed();
+  if (head === 'water' && !id) {
+    return m === 'POST' ? (await requireLogin(request, env)) || waterPlant(env) : methodNotAllowed();
+  }
   if (head === 'settings' && !id) {
     return m === 'PUT' ? (await requireLogin(request, env)) || saveSettings(request, env) : methodNotAllowed();
   }
@@ -1130,7 +1134,35 @@ async function getStats(env) {
       month: { requests: mo?.requests || 0, tokens: mo?.tokens || 0 },
       limit: { tokens: limitOf(st, 'aiDailyTokens'), requests: limitOf(st, 'aiDailyRequests'), rpm: limitOf(st, 'aiRpm') },
     },
+    water: waterOf(st, today),
   });
+}
+
+/* ─────────────── 화분 물 주기 (첫 화면 다마고치) ─────────────── */
+
+// 날짜는 한국 시간 기준. 어제도 줬으면 연속 일수 +1, 하루 건너뛰면 1부터.
+function waterOf(st, today) {
+  const last = st.waterLast || '';
+  let streak = Number(st.waterStreak) || 0;
+  if (last && last !== today && last !== dayBefore(today)) streak = 0; // 끊긴 연속 기록
+  return { today, last, streak, total: Number(st.waterTotal) || 0, watered: last === today };
+}
+
+function dayBefore(day) {
+  const d = new Date(`${day}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
+async function waterPlant(env) {
+  const today = kstDay();
+  const st = await getSettings(env);
+  const w = waterOf(st, today);
+  if (w.watered) return json({ water: w, already: true });
+  const next = { waterLast: today, waterStreak: String(w.streak + 1), waterTotal: String(w.total + 1) };
+  await env.DB.batch(Object.entries(next).map(([k, v]) =>
+    env.DB.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').bind(k, v)));
+  return json({ water: waterOf({ ...st, ...next }, today), already: false });
 }
 
 async function saveSettings(request, env) {

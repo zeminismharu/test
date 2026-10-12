@@ -285,12 +285,9 @@ function plantSVG(stage, mood = 'ok', kind = 'leaf') {
   </svg>`;
 }
 
-// 물 주기 기록 (이 기기에만 저장)
-function waterState() {
-  try { return JSON.parse(localGet('water') || 'null') || { last: '', streak: 0 }; } catch { return { last: '', streak: 0 }; }
-}
-const todayYmd = () => ymd(Date.now());
-const wateredToday = () => waterState().last === todayYmd();
+// 물 주기 기록: 서버에 저장되어 어느 기기에서나 같습니다 (/api/stats 의 water).
+const waterState = () => state.stats?.water || { last: '', streak: 0, total: 0, watered: false };
+const wateredToday = () => !!waterState().watered;
 
 function levelOf(n) {
   let i = 0;
@@ -411,13 +408,16 @@ function renderHero() {
   const bounce = (cls) => { const el = $('#tama'); el.classList.remove('jump', 'drink'); void el.offsetWidth; el.classList.add(cls); };
   $('#waterBtn').onclick = () => {
     if (wateredToday()) { bounce('jump'); return sayIt('오늘은 벌써 물 마셨어요. 내일 또 주세요!'); }
-    const w = waterState();
-    const yest = ymd(Date.now() - 864e5);
-    const next = { last: todayYmd(), streak: w.last === yest ? w.streak + 1 : 1 };
-    localSet('water', JSON.stringify(next));
-    renderHero();
-    bounce('drink');
-    sayIt(next.streak > 1 ? `꿀꺽꿀꺽! ${next.streak}일 연속 물 고마워요` : '꿀꺽꿀꺽! 물 고마워요');
+    needLogin(async () => {
+      try {
+        const { water, already } = await api('/api/water', { method: 'POST' });
+        state.stats = { ...(state.stats || {}), water };
+        renderHero();
+        if (already) { bounce('jump'); return sayIt('오늘은 벌써 물 마셨어요. 내일 또 주세요!'); }
+        bounce('drink');
+        sayIt(water.streak > 1 ? `꿀꺽꿀꺽! ${water.streak}일 연속 물 고마워요` : '꿀꺽꿀꺽! 물 고마워요');
+      } catch (err) { toast(err.message); }
+    });
   };
   const PLAY = !visits
     ? ['간지러워요! 얼른 싹 틔우고 싶어요', '전시 보러 가면 저도 데려가 주세요']
