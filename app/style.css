@@ -346,3 +346,26 @@ textarea.field { min-height: 120px; line-height: 1.6; }
 }
 .key-btn svg { width: 18px; height: 18px; }
 .key-btn:active { opacity: .8; }
+
+/* ── 분류 키맵 (전체 · 전시관 · 영화 · 그 외) ── */
+.cat-tabs { display: flex; gap: 4px; margin: 4px 0 14px; overflow-x: auto; scrollbar-width: none; }
+.cat-tabs::-webkit-scrollbar { display: none; }
+.cat-tab {
+  flex: none; display: inline-flex; align-items: baseline; gap: 4px;
+  padding: 8px 10px 10px; font-size: 20px; font-weight: 800; letter-spacing: -0.03em;
+  color: var(--text-3); border-radius: 12px; position: relative;
+}
+.cat-tab:first-child { padding-left: 2px; }
+.cat-tab .cat-n { font-size: 14px; font-weight: 700; color: var(--text-3); }
+.cat-tab.on { color: var(--text); }
+.cat-tab.on .cat-n { color: var(--blue); }
+.cat-tab.on::after { content: ''; position: absolute; left: 10px; right: 10px; bottom: 2px; height: 3px; border-radius: 2px; background: var(--text); }
+.cat-tab:first-child.on::after { left: 2px; }
+.cat-tab:focus-visible, .seg-big button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+.seg-big { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; background: var(--bg-2); padding: 4px; border-radius: 14px; }
+.seg-big button { height: 44px; border-radius: 11px; font-size: 16px; font-weight: 700; color: var(--text-3); }
+.seg-big button.on { background: var(--bg); color: var(--text); box-shadow: 0 1px 4px rgba(0, 29, 58, .12); }
+
+.detail-cat { display: inline-block; margin-top: 16px; font-size: 13px; font-weight: 700; color: var(--blue); background: var(--blue-soft); padding: 4px 10px; border-radius: 8px; }
+.detail-cat + .detail-title { margin-top: 8px; }

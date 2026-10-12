@@ -17,6 +17,7 @@
 - `app/` 이 그대로 Cloudflare Pages 에 올라갑니다. 빌드 과정 없음.
 - 서버는 `app/_worker.js` 한 파일 (D1 = DB, KV = IMAGES, 비밀값 ADMIN_PASSWORD · GEMINI_API_KEY).
 - 2026-10-12 사장님 요청: "일단은 비밀번호 없이" 배포. ADMIN_PASSWORD 가 없으면 누구나 수정 가능(열린 모드), 넣으면 잠김.
+- 분류 키맵(2026-10-12 사장님 요청): 전시관 → 영화 → 그 외 순서 고정. 값은 exhibition / movie / etc, 예전 자료는 etc.
 - 표는 `_worker.js` 의 ensureSchema 가 자동으로 만듭니다. 칸을 추가할 때는 ALTER 를 따로 넣어야 합니다.
 
 ## 배포

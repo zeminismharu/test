@@ -367,6 +367,29 @@ textarea.field { min-height: 120px; line-height: 1.6; }
 .key-btn svg { width: 18px; height: 18px; }
 .key-btn:active { opacity: .8; }
 
+/* ── 분류 키맵 (전체 · 전시관 · 영화 · 그 외) ── */
+.cat-tabs { display: flex; gap: 4px; margin: 4px 0 14px; overflow-x: auto; scrollbar-width: none; }
+.cat-tabs::-webkit-scrollbar { display: none; }
+.cat-tab {
+  flex: none; display: inline-flex; align-items: baseline; gap: 4px;
+  padding: 8px 10px 10px; font-size: 20px; font-weight: 800; letter-spacing: -0.03em;
+  color: var(--text-3); border-radius: 12px; position: relative;
+}
+.cat-tab:first-child { padding-left: 2px; }
+.cat-tab .cat-n { font-size: 14px; font-weight: 700; color: var(--text-3); }
+.cat-tab.on { color: var(--text); }
+.cat-tab.on .cat-n { color: var(--blue); }
+.cat-tab.on::after { content: ''; position: absolute; left: 10px; right: 10px; bottom: 2px; height: 3px; border-radius: 2px; background: var(--text); }
+.cat-tab:first-child.on::after { left: 2px; }
+.cat-tab:focus-visible, .seg-big button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+.seg-big { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; background: var(--bg-2); padding: 4px; border-radius: 14px; }
+.seg-big button { height: 44px; border-radius: 11px; font-size: 16px; font-weight: 700; color: var(--text-3); }
+.seg-big button.on { background: var(--bg); color: var(--text); box-shadow: 0 1px 4px rgba(0, 29, 58, .12); }
+
+.detail-cat { display: inline-block; margin-top: 16px; font-size: 13px; font-weight: 700; color: var(--blue); background: var(--blue-soft); padding: 4px 10px; border-radius: 8px; }
+.detail-cat + .detail-title { margin-top: 8px; }
+
 /* 관리 화면 — 작업 계획 보드 */
 
 .back-link { display: inline-flex; align-items: center; gap: 2px; color: var(--text-2); font-weight: 600; font-size: 15px; text-decoration: none; }
@@ -561,6 +584,7 @@ input[type=range]::-moz-range-thumb { width: 24px; height: 24px; border-radius: 
   <main class="page">
     <!-- 전체 레퍼런스 -->
     <section id="view-home" class="view">
+      <div class="cat-tabs" id="catTabs" role="tablist" aria-label="분류"></div>
       <label class="search">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
         <input id="search" type="search" placeholder="제목, 작가, 메모, 태그로 찾기" autocomplete="off" />
@@ -781,6 +805,7 @@ const CAPS = (async () => {
   return { db, assets, sample, user };
 })();
 
+const CATEGORIES = ['exhibition', 'movie', 'etc'];
 const LIMITS = { title: 200, artist: 100, memo: 10000, source: 1000, tag: 40, tags: 30, description: 5000 };
 
 function fail(message, status = 400) {
@@ -822,6 +847,7 @@ function cleanItem(body) {
   return {
     title: str(body.title, LIMITS.title),
     artist: str(body.artist, LIMITS.artist),
+    category: CATEGORIES.includes(body.category) ? body.category : 'etc',
     memo: str(body.memo, LIMITS.memo),
     source: str(body.source, LIMITS.source),
     tags,
@@ -832,7 +858,7 @@ function cleanItem(body) {
 function toItem(snap) {
   const d = snap.data();
   return {
-    id: snap.id, title: d.title || '', artist: d.artist || '', memo: d.memo || '', tags: d.tags || [],
+    id: snap.id, title: d.title || '', artist: d.artist || '', category: CATEGORIES.includes(d.category) ? d.category : 'etc', memo: d.memo || '', tags: d.tags || [],
     source: d.source || '', images: d.images || [], createdAt: d.createdAt || 0, updatedAt: d.updatedAt || 0,
   };
 }
@@ -2245,11 +2271,16 @@ const state = {
   loaded: false,
   q: '',
   artist: '',
+  cat: '', // '' = 전체
   tags: new Set(),
   sort: 'new',
   mode: localGet('viewMode') || 'grid',
   artistQ: '',
 };
+
+// 분류 키맵: 전시관 · 영화 · 그 외 순서. 키보드 1·2·3 (전체 0)
+const CATS = [['exhibition', '전시관'], ['movie', '영화'], ['etc', '그 외']];
+const catLabel = (c) => (CATS.find(([k]) => k === c) || CATS[2])[1];
 
 const SORTS = { new: '최신순', old: '오래된순', title: '제목순', artist: '작가순' };
 
@@ -2281,6 +2312,7 @@ async function loadAll() {
 }
 
 function renderAll() {
+  renderCatTabs();
   renderTagChips();
   renderGrid();
   renderFilterLabels();
@@ -2339,6 +2371,10 @@ function bindStatic() {
     if (e.target.closest('input, textarea') || e.metaKey || e.ctrlKey || e.altKey) return;
     if (e.key === '\\' || e.key === '₩' || e.code === 'Backslash') showScreen('admin');
     if (e.key === '/') { e.preventDefault(); go('#/'); $('#search').focus(); }
+    if (/^[0-3]$/.test(e.key) && $('#sheet').hidden) {
+      setCat(e.key === '0' ? '' : CATS[Number(e.key) - 1][0]);
+      go('#/');
+    }
   });
 
   $('#viewerClose').onclick = () => ($('#viewer').hidden = true);
@@ -2355,6 +2391,7 @@ function renderAuth() {
 function resetFilters() {
   state.q = '';
   state.artist = '';
+  state.cat = '';
   state.tags.clear();
   $('#search').value = '';
   renderAll();
@@ -2375,6 +2412,7 @@ function matches(item, q) {
 function filtered() {
   const list = state.items.filter((it) =>
     matches(it, state.q.trim()) &&
+    (!state.cat || it.category === state.cat) &&
     (!state.artist || it.artist === state.artist) &&
     [...state.tags].every((t) => it.tags.includes(t))
   );
@@ -2385,6 +2423,21 @@ function filtered() {
     artist: (a, b) => (a.artist || '힣').localeCompare(b.artist || '힣', 'ko') || b.createdAt - a.createdAt,
   }[state.sort];
   return list.sort(by);
+}
+
+function setCat(c) {
+  state.cat = c;
+  renderCatTabs();
+  renderGrid();
+}
+
+function renderCatTabs() {
+  const box = $('#catTabs');
+  const n = (c) => state.items.filter((it) => !c || it.category === c).length;
+  box.innerHTML = [['', '전체'], ...CATS].map(([k, label], i) =>
+    `<button class="cat-tab ${state.cat === k ? 'on' : ''}" data-cat="${k}" role="tab" aria-selected="${state.cat === k}" title="키보드 ${i}">${label}<span class="cat-n">${state.loaded ? n(k) : ''}</span></button>`
+  ).join('');
+  box.querySelectorAll('.cat-tab').forEach((b) => (b.onclick = () => setCat(b.dataset.cat)));
 }
 
 function allTags() {
@@ -2454,7 +2507,7 @@ function cardHtml(it) {
     ${media}
     <div class="item-meta">
       ${it.title ? `<p class="item-title">${esc(it.title)}</p>` : ''}
-      ${it.artist ? `<div class="item-artist">${esc(it.artist)}</div>` : ''}
+      ${it.artist || !state.cat ? `<div class="item-artist">${[state.cat ? '' : catLabel(it.category), it.artist].filter(Boolean).map(esc).join(' · ')}</div>` : ''}
       ${it.memo ? `<div class="item-memo">${esc(it.memo)}</div>` : ''}
     </div>
   </button>`;
@@ -2477,7 +2530,8 @@ function renderGrid() {
   bindCards(grid);
 
   const anyFilter = state.q.trim() || state.artist || state.tags.size;
-  $('#resultCount').textContent = state.items.length ? (anyFilter ? `${list.length}개 찾음` : `전체 ${list.length}개`) : '';
+  const scope = state.cat ? catLabel(state.cat) : '전체';
+  $('#resultCount').textContent = state.items.length ? (anyFilter ? `${scope}에서 ${list.length}개 찾음` : `${scope} ${list.length}개`) : '';
 
   const empty = $('#empty');
   empty.hidden = list.length > 0;
@@ -2599,6 +2653,7 @@ function openDetail(id) {
   openSheet(`
     ${imgs.length ? `<div class="carousel ${imgs.length > 1 ? 'multi' : ''}" id="carousel">${imgs.map((k) => `<img src="/_blob/${k}" alt="" />`).join('')}</div>
       ${imgs.length > 1 ? `<div class="dots" id="dots">1 / ${imgs.length}</div>` : ''}` : ''}
+    <span class="detail-cat">${catLabel(it.category)}</span>
     ${it.title ? `<h2 class="detail-title">${esc(it.title)}</h2>` : '<div style="height:8px"></div>'}
     ${it.artist ? `<button class="detail-artist" id="dArtist">${esc(it.artist)} ${ICON.chevron}</button>` : ''}
     ${it.memo ? `<p class="detail-memo">${esc(it.memo)}</p>` : ''}
@@ -2659,6 +2714,7 @@ function openEditor(it = null) {
   const draft = {
     images: it ? [...it.images] : [],
     tags: it ? [...it.tags] : [],
+    category: it?.category || state.cat || 'exhibition',
     newKeys: [], // 이번에 새로 올린 사진 (취소하면 지움)
     uploading: 0,
   };
@@ -2671,6 +2727,10 @@ function openEditor(it = null) {
         <span class="label">사진</span>
         <div class="photos" id="photos"></div>
         <input type="file" id="fileInput" accept="image/*" multiple hidden />
+      </div>
+      <div>
+        <span class="label">분류</span>
+        <div class="seg-big" id="fCat" role="radiogroup">${CATS.map(([k, label]) => `<button type="button" role="radio" data-cat="${k}">${label}</button>`).join('')}</div>
       </div>
       <div>
         <label class="label" for="fTitle">제목</label>
@@ -2714,6 +2774,14 @@ function openEditor(it = null) {
     }));
   };
   renderPhotos();
+
+  const renderCat = () => $('#fCat').querySelectorAll('button').forEach((b) => {
+    const on = b.dataset.cat === draft.category;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-checked', on);
+  });
+  $('#fCat').querySelectorAll('button').forEach((b) => (b.onclick = () => { draft.category = b.dataset.cat; renderCat(); }));
+  renderCat();
 
   $('#fileInput').onchange = async (e) => {
     const files = [...e.target.files].slice(0, 20 - draft.images.length);
@@ -2771,6 +2839,7 @@ function openEditor(it = null) {
     if (tagInput.value.trim()) { addTags(tagInput.value); tagInput.value = ''; }
     if (draft.uploading) return toast('사진을 올리는 중이에요. 잠시만 기다려 주세요');
     const body = {
+      category: draft.category,
       title: $('#fTitle').value,
       artist: $('#fArtist').value,
       memo: $('#fMemo').value,

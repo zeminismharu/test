@@ -10,11 +10,16 @@ const state = {
   loaded: false,
   q: '',
   artist: '',
+  cat: '', // '' = 전체
   tags: new Set(),
   sort: 'new',
   mode: localGet('viewMode') || 'grid',
   artistQ: '',
 };
+
+// 분류 키맵: 전시관 · 영화 · 그 외 순서. 키보드 1·2·3 (전체 0)
+const CATS = [['exhibition', '전시관'], ['movie', '영화'], ['etc', '그 외']];
+const catLabel = (c) => (CATS.find(([k]) => k === c) || CATS[2])[1];
 
 const SORTS = { new: '최신순', old: '오래된순', title: '제목순', artist: '작가순' };
 
@@ -46,6 +51,7 @@ async function loadAll() {
 }
 
 function renderAll() {
+  renderCatTabs();
   renderTagChips();
   renderGrid();
   renderFilterLabels();
@@ -103,6 +109,10 @@ function bindStatic() {
     if (e.target.closest('input, textarea') || e.metaKey || e.ctrlKey || e.altKey) return;
     if (e.key === '\\' || e.key === '₩' || e.code === 'Backslash') location.href = '/admin';
     if (e.key === '/') { e.preventDefault(); go('#/'); $('#search').focus(); }
+    if (/^[0-3]$/.test(e.key) && $('#sheet').hidden) {
+      setCat(e.key === '0' ? '' : CATS[Number(e.key) - 1][0]);
+      go('#/');
+    }
   });
 
   $('#viewerClose').onclick = () => ($('#viewer').hidden = true);
@@ -119,6 +129,7 @@ function renderAuth() {
 function resetFilters() {
   state.q = '';
   state.artist = '';
+  state.cat = '';
   state.tags.clear();
   $('#search').value = '';
   renderAll();
@@ -139,6 +150,7 @@ function matches(item, q) {
 function filtered() {
   const list = state.items.filter((it) =>
     matches(it, state.q.trim()) &&
+    (!state.cat || it.category === state.cat) &&
     (!state.artist || it.artist === state.artist) &&
     [...state.tags].every((t) => it.tags.includes(t))
   );
@@ -149,6 +161,21 @@ function filtered() {
     artist: (a, b) => (a.artist || '힣').localeCompare(b.artist || '힣', 'ko') || b.createdAt - a.createdAt,
   }[state.sort];
   return list.sort(by);
+}
+
+function setCat(c) {
+  state.cat = c;
+  renderCatTabs();
+  renderGrid();
+}
+
+function renderCatTabs() {
+  const box = $('#catTabs');
+  const n = (c) => state.items.filter((it) => !c || it.category === c).length;
+  box.innerHTML = [['', '전체'], ...CATS].map(([k, label], i) =>
+    `<button class="cat-tab ${state.cat === k ? 'on' : ''}" data-cat="${k}" role="tab" aria-selected="${state.cat === k}" title="키보드 ${i}">${label}<span class="cat-n">${state.loaded ? n(k) : ''}</span></button>`
+  ).join('');
+  box.querySelectorAll('.cat-tab').forEach((b) => (b.onclick = () => setCat(b.dataset.cat)));
 }
 
 function allTags() {
@@ -218,7 +245,7 @@ function cardHtml(it) {
     ${media}
     <div class="item-meta">
       ${it.title ? `<p class="item-title">${esc(it.title)}</p>` : ''}
-      ${it.artist ? `<div class="item-artist">${esc(it.artist)}</div>` : ''}
+      ${it.artist || !state.cat ? `<div class="item-artist">${[state.cat ? '' : catLabel(it.category), it.artist].filter(Boolean).map(esc).join(' · ')}</div>` : ''}
       ${it.memo ? `<div class="item-memo">${esc(it.memo)}</div>` : ''}
     </div>
   </button>`;
@@ -241,7 +268,8 @@ function renderGrid() {
   bindCards(grid);
 
   const anyFilter = state.q.trim() || state.artist || state.tags.size;
-  $('#resultCount').textContent = state.items.length ? (anyFilter ? `${list.length}개 찾음` : `전체 ${list.length}개`) : '';
+  const scope = state.cat ? catLabel(state.cat) : '전체';
+  $('#resultCount').textContent = state.items.length ? (anyFilter ? `${scope}에서 ${list.length}개 찾음` : `${scope} ${list.length}개`) : '';
 
   const empty = $('#empty');
   empty.hidden = list.length > 0;
@@ -363,6 +391,7 @@ function openDetail(id) {
   openSheet(`
     ${imgs.length ? `<div class="carousel ${imgs.length > 1 ? 'multi' : ''}" id="carousel">${imgs.map((k) => `<img src="/img/${k}" alt="" />`).join('')}</div>
       ${imgs.length > 1 ? `<div class="dots" id="dots">1 / ${imgs.length}</div>` : ''}` : ''}
+    <span class="detail-cat">${catLabel(it.category)}</span>
     ${it.title ? `<h2 class="detail-title">${esc(it.title)}</h2>` : '<div style="height:8px"></div>'}
     ${it.artist ? `<button class="detail-artist" id="dArtist">${esc(it.artist)} ${ICON.chevron}</button>` : ''}
     ${it.memo ? `<p class="detail-memo">${esc(it.memo)}</p>` : ''}
@@ -423,6 +452,7 @@ function openEditor(it = null) {
   const draft = {
     images: it ? [...it.images] : [],
     tags: it ? [...it.tags] : [],
+    category: it?.category || state.cat || 'exhibition',
     newKeys: [], // 이번에 새로 올린 사진 (취소하면 지움)
     uploading: 0,
   };
@@ -435,6 +465,10 @@ function openEditor(it = null) {
         <span class="label">사진</span>
         <div class="photos" id="photos"></div>
         <input type="file" id="fileInput" accept="image/*" multiple hidden />
+      </div>
+      <div>
+        <span class="label">분류</span>
+        <div class="seg-big" id="fCat" role="radiogroup">${CATS.map(([k, label]) => `<button type="button" role="radio" data-cat="${k}">${label}</button>`).join('')}</div>
       </div>
       <div>
         <label class="label" for="fTitle">제목</label>
@@ -478,6 +512,14 @@ function openEditor(it = null) {
     }));
   };
   renderPhotos();
+
+  const renderCat = () => $('#fCat').querySelectorAll('button').forEach((b) => {
+    const on = b.dataset.cat === draft.category;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-checked', on);
+  });
+  $('#fCat').querySelectorAll('button').forEach((b) => (b.onclick = () => { draft.category = b.dataset.cat; renderCat(); }));
+  renderCat();
 
   $('#fileInput').onchange = async (e) => {
     const files = [...e.target.files].slice(0, 20 - draft.images.length);
@@ -535,6 +577,7 @@ function openEditor(it = null) {
     if (tagInput.value.trim()) { addTags(tagInput.value); tagInput.value = ''; }
     if (draft.uploading) return toast('사진을 올리는 중이에요. 잠시만 기다려 주세요');
     const body = {
+      category: draft.category,
       title: $('#fTitle').value,
       artist: $('#fArtist').value,
       memo: $('#fMemo').value,

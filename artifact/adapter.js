@@ -11,6 +11,7 @@ const CAPS = (async () => {
   return { db, assets, sample, user };
 })();
 
+const CATEGORIES = ['exhibition', 'movie', 'etc'];
 const LIMITS = { title: 200, artist: 100, memo: 10000, source: 1000, tag: 40, tags: 30, description: 5000 };
 
 function fail(message, status = 400) {
@@ -52,6 +53,7 @@ function cleanItem(body) {
   return {
     title: str(body.title, LIMITS.title),
     artist: str(body.artist, LIMITS.artist),
+    category: CATEGORIES.includes(body.category) ? body.category : 'etc',
     memo: str(body.memo, LIMITS.memo),
     source: str(body.source, LIMITS.source),
     tags,
@@ -62,7 +64,7 @@ function cleanItem(body) {
 function toItem(snap) {
   const d = snap.data();
   return {
-    id: snap.id, title: d.title || '', artist: d.artist || '', memo: d.memo || '', tags: d.tags || [],
+    id: snap.id, title: d.title || '', artist: d.artist || '', category: CATEGORIES.includes(d.category) ? d.category : 'etc', memo: d.memo || '', tags: d.tags || [],
     source: d.source || '', images: d.images || [], createdAt: d.createdAt || 0, updatedAt: d.updatedAt || 0,
   };
 }

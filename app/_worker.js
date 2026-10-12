@@ -36,6 +36,8 @@ const DEFAULT_MODEL = 'gemini-3.6-flash';
 const FALLBACK_MODEL = 'gemini-flash-latest';
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const MAX_IMAGES = 20;
+// 분류: 전시관 · 영화 · 그 외 (화면에 보이는 순서)
+const CATEGORIES = ['exhibition', 'movie', 'etc'];
 const LIMITS = { title: 200, artist: 100, memo: 10000, source: 1000, tag: 40, tags: 30, description: 5000 };
 
 const encoder = new TextEncoder();
@@ -146,6 +148,8 @@ async function ensureSchema(env) {
       updated_at INTEGER NOT NULL
     )`),
   ]);
+  // 2026-10 분류(전시관·영화·그 외) 칸 추가. 이미 있으면 오류가 나므로 무시합니다.
+  await env.DB.prepare("ALTER TABLE items ADD COLUMN category TEXT NOT NULL DEFAULT 'etc'").run().catch(() => {});
   schemaReady = true;
 }
 
@@ -154,6 +158,7 @@ function rowToItem(r) {
     id: r.id,
     title: r.title,
     artist: r.artist,
+    category: CATEGORIES.includes(r.category) ? r.category : 'etc',
     memo: r.memo,
     tags: safeParse(r.tags, []),
     source: r.source,
@@ -180,6 +185,7 @@ function cleanItem(body) {
   return {
     title: str(body.title, LIMITS.title),
     artist: str(body.artist, LIMITS.artist),
+    category: CATEGORIES.includes(body.category) ? body.category : 'etc',
     memo: str(body.memo, LIMITS.memo),
     source: str(body.source, LIMITS.source),
     tags,
@@ -195,8 +201,8 @@ async function createItem(request, env) {
   const now = Date.now();
   const id = crypto.randomUUID();
   await env.DB.prepare(
-    'INSERT INTO items (id, title, artist, memo, tags, source, images, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
-  ).bind(id, it.title, it.artist, it.memo, JSON.stringify(it.tags), it.source, JSON.stringify(it.images), now, now).run();
+    'INSERT INTO items (id, title, artist, category, memo, tags, source, images, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  ).bind(id, it.title, it.artist, it.category, it.memo, JSON.stringify(it.tags), it.source, JSON.stringify(it.images), now, now).run();
   const row = await env.DB.prepare('SELECT * FROM items WHERE id = ?').bind(id).first();
   return json({ item: rowToItem(row) }, 201);
 }
@@ -209,8 +215,8 @@ async function updateItem(request, env, id) {
   const it = cleanItem(body);
   if (!it.title && !it.images.length && !it.memo) return json({ error: '제목, 사진, 메모 중 하나는 있어야 합니다.' }, 400);
   await env.DB.prepare(
-    'UPDATE items SET title = ?, artist = ?, memo = ?, tags = ?, source = ?, images = ?, updated_at = ? WHERE id = ?'
-  ).bind(it.title, it.artist, it.memo, JSON.stringify(it.tags), it.source, JSON.stringify(it.images), Date.now(), id).run();
+    'UPDATE items SET title = ?, artist = ?, category = ?, memo = ?, tags = ?, source = ?, images = ?, updated_at = ? WHERE id = ?'
+  ).bind(it.title, it.artist, it.category, it.memo, JSON.stringify(it.tags), it.source, JSON.stringify(it.images), Date.now(), id).run();
   // 수정하면서 뺀 사진은 저장소에서도 지웁니다.
   const removed = safeParse(old.images, []).filter((k) => !it.images.includes(k));
   await Promise.all(removed.map((k) => env.IMAGES?.delete(k)));
