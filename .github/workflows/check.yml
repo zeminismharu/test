@@ -1,0 +1,26 @@
+name: 데이터 점검 (읽기만)
+
+# 공개 API(보기용)만 읽어서 전시 방문이 어떻게 세어지는지 로그로 보여줍니다. 아무것도 바꾸지 않습니다.
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 항목·가볼 곳 읽기
+        run: |
+          cat > check.mjs <<'JS'
+          const B = 'https://zeminism-archive.pages.dev';
+          const get = async (p) => (await fetch(B + p)).json();
+          const { items } = await get('/api/items');
+          const { todo = [] } = await get('/api/todo').catch(() => ({}));
+          const day = (ms) => new Date(ms + 9 * 3600e3).toISOString().slice(0, 10);
+          console.log(`항목 ${items.length}개`);
+          for (const i of [...items].sort((a, b) => (a.visitedAt || a.createdAt) - (b.visitedAt || b.createdAt))) {
+            console.log([i.category, JSON.stringify(i.title), '장소=' + JSON.stringify(i.place || ''), '관람=' + (i.visitedAt ? day(i.visitedAt) : '-'), '올림=' + day(i.createdAt), '사진=' + i.images.length].join(' | '));
+          }
+          console.log('\n가볼 곳');
+          for (const t of todo) console.log([t.name, t.area, t.done ? '체크' : '', t.visited ? 'visited=' + t.visited : ''].join(' | '), JSON.stringify(Object.keys(t)));
+          JS
+          node check.mjs
