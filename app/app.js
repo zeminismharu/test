@@ -338,6 +338,9 @@ function openEnergy() {
         <input class="field" id="limTokens" type="number" min="0" step="1000" inputmode="numeric" value="${ai.limit.tokens || ''}" placeholder="예) 1000000" /></label>`}
       <label><span class="label">하루 AI 사용 횟수 한도 (0 = 안 정함)</span>
         <input class="field" id="limReq" type="number" min="0" step="1" inputmode="numeric" value="${ai.limit.requests || ''}" placeholder="예) 200" /></label>
+      ${isClaude ? '' : `<label><span class="label">1분에 쓸 수 있는 횟수 (0 = 안 정함)</span>
+        <input class="field" id="limRpm" type="number" min="0" step="1" inputmode="numeric" value="${ai.limit.rpm || ''}" placeholder="예) 8" /></label>
+      <p class="hint" style="margin:-4px 0 0">AI Studio → 비율 제한 화면의 숫자보다 조금 낮게 적으면, 구글 한도(429)에 걸리기 전에 앱이 먼저 멈춰요. 한도를 넘으면 AI 단추가 쉬어요.</p>`}
       <button class="btn block" id="limSave" type="submit">저장</button>
     </form>`);
   $('#energyForm').onsubmit = async (e) => {
@@ -346,6 +349,7 @@ function openEnergy() {
     try {
       const body = { aiDailyRequests: $('#limReq').value };
       if ($('#limTokens')) body.aiDailyTokens = $('#limTokens').value;
+      if ($('#limRpm')) body.aiRpm = $('#limRpm').value;
       state.stats = await api('/api/settings', { method: 'PUT', body });
       await closeSheet();
       renderHero();
@@ -943,7 +947,10 @@ function openEditor(it = null) {
     $('#aiFill').disabled = true;
     hint('AI가 사진을 보고 분류하는 중이에요…');
     try {
-      const { suggestion: s } = await api('/api/analyze', { method: 'POST', body: { image: key } });
+      // 큰 사진 대신 긴 변 768px 미리보기를 보내 토큰을 아낍니다.
+      let thumb = '';
+      try { thumb = await blobToBase64(await resizeImage(await (await fetch(`/img/${key}`)).blob(), 768)); } catch { /* 없으면 서버가 원본 사용 */ }
+      const { suggestion: s } = await api('/api/analyze', { method: 'POST', body: { image: key, thumb, force } });
       if (!$('#editForm')) return; // 그사이 창을 닫았으면 그만
       const filled = [];
       const put = (id, v, name) => { const el = $(id); if (v && (force || !el.value.trim())) { el.value = v; filled.push(name); } };

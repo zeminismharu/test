@@ -43,7 +43,11 @@
 const COOKIE_NAME = 'ref_session';
 const SESSION_TTL = 60 * 60 * 24 * 30; // 30일
 const DEFAULT_MODEL = 'gemini-3.6-flash';
-const FALLBACK_MODEL = 'gemini-flash-latest';
+// 무료 한도는 모델마다 따로라서(2026-10 AI Studio: 3.6 Flash·3.8 Flash 각각 분당 5회·하루 20회),
+// 기본 모델이 한도(429)나 붐빔(5xx)에 걸리면 다른 모델로 넘어갑니다.
+const FALLBACK_MODEL = 'gemini-3.8-flash';
+// 앱이 먼저 쉬는 기본 한도 (첫 화면 카드에서 바꿀 수 있음). 두 모델을 합쳐 하루 40회 중 여유를 둠.
+const DEFAULT_LIMITS = { aiRpm: 4, aiDailyRequests: 36 };
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const MAX_IMAGES = 20;
 // 분류: 전시관 · 영화 · 그 외 (화면에 보이는 순서)
@@ -193,6 +197,7 @@ async function ensureSchema(env) {
       sort INTEGER NOT NULL DEFAULT 0,
       created_at INTEGER NOT NULL
     )`),
+    env.DB.prepare('CREATE TABLE IF NOT EXISTS analysis (image TEXT PRIMARY KEY, result TEXT NOT NULL, created_at INTEGER NOT NULL)'),
     env.DB.prepare('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)'),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS boards (
       id TEXT PRIMARY KEY,
@@ -407,7 +412,9 @@ async function describeArtist(env, name) {
     ...(model !== FALLBACK_MODEL ? [{ model: FALLBACK_MODEL, search: true }, { model: FALLBACK_MODEL, search: false }] : []),
   ];
   let lastError = '';
+  const skip = new Set(); // 한도·붐빔에 걸린 모델은 다시 묻지 않음
   for (const a of attempts) {
+    if (skip.has(a.model)) continue;
     const res = await callGemini(env, a.model, prompt, a.search);
     if (res.text) {
       const description = res.text.trim().slice(0, LIMITS.description);
@@ -415,8 +422,8 @@ async function describeArtist(env, name) {
       return json({ artist: { name, description, sources: res.sources, byAi: true, model: a.model } });
     }
     lastError = res.error;
-    if (res.status === 400 && /API key/i.test(res.error)) break; // 키가 틀리면 더 시도해도 소용없음
-    if (res.status === 429) break;
+    if (switchModel(res)) { skip.add(a.model); continue; }
+    if (stopRetry(res)) break;
   }
   return json({ error: `AI 설명을 만들지 못했습니다. ${lastError}`.trim() }, 502);
 }
@@ -495,13 +502,27 @@ async function analyzeImage(request, env) {
   const body = await readJson(request);
   const key = String(body?.image || '');
   if (!/^[a-z0-9-]{8,64}$/.test(key)) return json({ error: '사진이 없습니다.' }, 400);
-  const { value, metadata } = await env.IMAGES.getWithMetadata(key, 'arrayBuffer');
-  if (!value) return json({ error: '사진을 찾을 수 없습니다.' }, 404);
 
   const { results } = await env.DB.prepare("SELECT artist, COUNT(*) AS n FROM items WHERE artist != '' GROUP BY artist ORDER BY n DESC").all();
   const existing = results.map((r) => r.artist);
 
-  const parts = [{ text: analyzePrompt(existing) }, { inlineData: { mimeType: metadata?.type || 'image/jpeg', data: toBase64(value) } }];
+  // 한 번 분석한 사진은 다시 묻지 않습니다 ('사진으로 채우기'로 다시 누르면 새로 물음).
+  if (!body.force) {
+    const c = await env.DB.prepare('SELECT result FROM analysis WHERE image = ?').bind(key).first();
+    if (c) return json({ suggestion: cleanAnalysis(safeParse(c.result, {}), existing), cached: true });
+  }
+
+  // 화면에서 보낸 작은 미리보기(긴 변 768px)를 쓰면 토큰이 크게 줄어듭니다. 없으면 저장된 사진을 씁니다.
+  let image;
+  const thumb = String(body.thumb || '');
+  if (thumb && thumb.length <= 1_500_000 && /^[A-Za-z0-9+/=]+$/.test(thumb)) image = { mimeType: 'image/jpeg', data: thumb };
+  else {
+    const { value, metadata } = await env.IMAGES.getWithMetadata(key, 'arrayBuffer');
+    if (!value) return json({ error: '사진을 찾을 수 없습니다.' }, 404);
+    image = { mimeType: metadata?.type || 'image/jpeg', data: toBase64(value) };
+  }
+
+  const parts = [{ text: analyzePrompt(existing) }, { inlineData: image }];
   const schema = {
     type: 'OBJECT',
     properties: {
@@ -522,18 +543,25 @@ async function analyzeImage(request, env) {
     ...(model !== FALLBACK_MODEL ? [{ model: FALLBACK_MODEL, schema: false }] : []),
   ];
   let lastError = '';
+  const skip = new Set(); // 한도·붐빔에 걸린 모델은 다시 묻지 않음
   for (const a of attempts) {
+    if (skip.has(a.model)) continue;
     const generationConfig = { responseMimeType: 'application/json' };
     if (a.schema) generationConfig.responseSchema = schema;
     const res = await geminiRequest(env, a.model, { contents: [{ role: 'user', parts }], generationConfig });
     if (res.text) {
       const parsed = parseJsonLoose(res.text);
-      if (parsed) return json({ suggestion: cleanAnalysis(parsed, existing), model: a.model });
+      if (parsed) {
+        await env.DB.prepare(`INSERT INTO analysis (image, result, created_at) VALUES (?, ?, ?)
+          ON CONFLICT(image) DO UPDATE SET result = excluded.result, created_at = excluded.created_at`).bind(key, JSON.stringify(parsed), Date.now()).run().catch(() => {});
+        return json({ suggestion: cleanAnalysis(parsed, existing), model: a.model });
+      }
       lastError = 'AI 답을 읽지 못했습니다.';
       continue;
     }
     lastError = res.error;
-    if (res.status === 429 || (res.status === 400 && /API key/i.test(res.error))) break;
+    if (switchModel(res)) { skip.add(a.model); continue; }
+    if (stopRetry(res)) break;
   }
   return json({ error: `사진을 분석하지 못했습니다. ${lastError}`.trim() }, 502);
 }
@@ -615,7 +643,9 @@ async function groupPhotos(request, env) {
     ...(model !== FALLBACK_MODEL ? [{ model: FALLBACK_MODEL, schema: false }] : []),
   ];
   let lastError = '';
+  const skip = new Set(); // 한도·붐빔에 걸린 모델은 다시 묻지 않음
   for (const a of attempts) {
+    if (skip.has(a.model)) continue;
     const generationConfig = { responseMimeType: 'application/json' };
     if (a.schema) generationConfig.responseSchema = schema;
     const res = await geminiRequest(env, a.model, { contents: [{ role: 'user', parts }], generationConfig });
@@ -626,7 +656,8 @@ async function groupPhotos(request, env) {
       continue;
     }
     lastError = res.error;
-    if (res.status === 429 || (res.status === 400 && /API key/i.test(res.error))) break;
+    if (switchModel(res)) { skip.add(a.model); continue; }
+    if (stopRetry(res)) break;
   }
   return json({ error: `사진을 묶지 못했습니다. ${lastError}`.trim() }, 502);
 }
@@ -655,27 +686,93 @@ async function callGemini(env, model, prompt, withSearch) {
   return { text: text.replace(/\*\*/g, ''), sources: sources.slice(0, 6) };
 }
 
-// 구글 AI 부르기 + 오늘 쓴 양 기록 (구글은 남은 양을 알려주지 않아서 앱이 직접 셉니다)
+// 다른 방식·다른 모델로 바로 다시 묻지 말아야 할 실패: 한도(429)·구글 서버 문제(5xx)·키 문제.
+// (2026-10 AI Studio 에서 503 뒤에 연달아 다시 물어 429 까지 난 것을 보고 고침)
+// 구글 쪽 한도(429)·붐빔(5xx)이면 그 모델은 그만 묻고, 다음 다른 모델로 넘어갑니다. (우리가 정한 한도는 넘어가지 않음)
+function switchModel(res) {
+  return !res.own && (res.status === 429 || res.status >= 500);
+}
+
+function stopRetry(res) {
+  return res.status === 0 || res.status === 429 || res.status >= 500 || res.status === 401 || res.status === 403 ||
+    (res.status === 400 && /API key/i.test(res.error || ''));
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// 구글이 알려주는 "몇 초 뒤에 다시" (RetryInfo.retryDelay = "23s")
+function retryDelaySec(data) {
+  for (const d of data?.error?.details || []) {
+    const m = String(d?.retryDelay || '').match(/^([\d.]+)s$/);
+    if (m) return Math.ceil(Number(m[1]));
+  }
+  return 0;
+}
+
+// 우리가 정한 한도(하루 횟수·하루 토큰·분당 횟수)를 넘으면 구글에 묻기 전에 멈춥니다.
+async function checkLimits(env) {
+  const st = await getSettings(env);
+  const lim = { req: limitOf(st, 'aiDailyRequests'), tok: limitOf(st, 'aiDailyTokens'), rpm: limitOf(st, 'aiRpm') };
+  if (!lim.req && !lim.tok && !lim.rpm) return null;
+  const t = await env.DB.prepare('SELECT requests, tokens FROM ai_usage WHERE day = ?').bind(kstDay()).first();
+  if (lim.req && (t?.requests || 0) >= lim.req) return `오늘 AI 에너지를 다 썼어요 (하루 ${lim.req}번). 내일 다시 쓰거나 첫 화면 카드에서 한도를 바꿔 주세요.`;
+  if (lim.tok && (t?.tokens || 0) >= lim.tok) return `오늘 AI 에너지를 다 썼어요 (하루 ${lim.tok.toLocaleString('ko-KR')}토큰). 내일 다시 쓰거나 첫 화면 카드에서 한도를 바꿔 주세요.`;
+  if (lim.rpm) {
+    const mm = await env.DB.prepare('SELECT requests FROM ai_usage WHERE day = ?').bind(minuteKey()).first();
+    if ((mm?.requests || 0) >= lim.rpm) return `1분에 ${lim.rpm}번까지만 쓰도록 정해져 있어요. 1분쯤 뒤에 다시 해 주세요.`;
+  }
+  return null;
+}
+
+// 분당 횟수는 ai_usage 에 'm:2026-10-12T14:03' 줄로 셉니다 (하루 줄과 섞이지 않게 m: 로 시작).
+function minuteKey(ms = Date.now()) {
+  return `m:${new Date(ms + 9 * 3600 * 1000).toISOString().slice(0, 16)}`;
+}
+
+async function countMinute(env) {
+  await env.DB.batch([
+    env.DB.prepare(`INSERT INTO ai_usage (day, requests, tokens) VALUES (?, 1, 0)
+      ON CONFLICT(day) DO UPDATE SET requests = requests + 1`).bind(minuteKey()),
+    env.DB.prepare("DELETE FROM ai_usage WHERE day LIKE 'm:%' AND day < ?").bind(minuteKey(Date.now() - 10 * 60 * 1000)),
+  ]);
+}
+
+// 구글 AI 부르기: 한도 확인 → 요청 → 503 이면 잠깐 기다렸다 최대 2번, 429 면 구글이 알려준 시간이 짧을 때만 1번 다시.
+// 쓴 양은 성공한 요청만 오늘 사용량(AI 에너지)에 더합니다.
 async function geminiFetch(env, model, body) {
-  let res;
-  try {
-    res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY },
-      body: JSON.stringify(body),
-    });
-  } catch {
-    return { error: '구글 AI에 연결하지 못했습니다.', status: 0 };
+  const blocked = await checkLimits(env).catch(() => null);
+  if (blocked) return { error: blocked, status: 429, own: true };
+  const waits503 = [2000, 5000];
+  let waited429 = false;
+  for (let attempt = 0; ; attempt++) {
+    let res;
+    await countMinute(env).catch(() => {});
+    try {
+      res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY },
+        body: JSON.stringify(body),
+      });
+    } catch {
+      return { error: '구글 AI에 연결하지 못했습니다.', status: 0 };
+    }
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      await recordAi(env, Number(data?.usageMetadata?.totalTokenCount) || 0).catch(() => {});
+      return { data, res };
+    }
+    if ((res.status === 503 || res.status === 500) && attempt < waits503.length) {
+      await sleep(waits503[attempt]);
+      continue;
+    }
+    if (res.status === 429) {
+      const sec = retryDelaySec(data);
+      if (!waited429 && sec > 0 && sec <= 8) { waited429 = true; await sleep(sec * 1000); continue; }
+      return { error: `구글 AI 무료 한도에 걸렸어요.${sec ? ` ${sec}초쯤 뒤에` : ' 잠시 뒤에'} 다시 해 주세요.`, status: 429 };
+    }
+    if (res.status >= 500) return { error: '구글 AI 서버가 지금 붐벼요. 잠시 뒤에 다시 해 주세요.', status: res.status };
+    return { error: data?.error?.message || `HTTP ${res.status}`, status: res.status };
   }
-  const data = await res.json().catch(() => ({}));
-  if (res.status !== 400 && res.status !== 401 && res.status !== 403) {
-    await recordAi(env, Number(data?.usageMetadata?.totalTokenCount) || 0).catch(() => {});
-  }
-  if (!res.ok) {
-    const msg = data?.error?.message || `HTTP ${res.status}`;
-    return { error: res.status === 429 ? '구글 AI 사용량 한도에 걸렸습니다. 잠시 뒤 다시 해 주세요.' : msg, status: res.status };
-  }
-  return { data, res };
 }
 
 /* ─────────────── 가볼 곳 (퀘스트) ─────────────── */
@@ -791,7 +888,9 @@ async function refreshVenue(env, name) {
   const model = env.GEMINI_MODEL || DEFAULT_MODEL;
   const attempts = [model, ...(model !== FALLBACK_MODEL ? [FALLBACK_MODEL] : [])];
   let lastError = '';
+  const skip = new Set();
   for (const mdl of attempts) {
+    if (skip.has(mdl)) continue;
     // 구글 검색 도구와 JSON 모양 지정은 같이 쓸 수 없어서, 글로 받은 뒤 JSON 부분만 읽습니다.
     const res = await callGemini(env, mdl, prompt, true);
     if (res.text) {
@@ -805,7 +904,8 @@ async function refreshVenue(env, name) {
       return json({ venue: { name, info, sources: res.sources || [], updatedAt: now } });
     }
     lastError = res.error;
-    if (res.status === 429 || (res.status === 400 && /API key/i.test(res.error))) break;
+    if (switchModel(res)) { skip.add(mdl); continue; }
+    if (stopRetry(res)) break;
   }
   return json({ error: `전시관 정보를 찾지 못했습니다. ${lastError}`.trim() }, 502);
 }
@@ -820,6 +920,11 @@ function kstDay(ms = Date.now()) {
 async function recordAi(env, tokens) {
   await env.DB.prepare(`INSERT INTO ai_usage (day, requests, tokens) VALUES (?, 1, ?)
     ON CONFLICT(day) DO UPDATE SET requests = requests + 1, tokens = tokens + excluded.tokens`).bind(kstDay(), tokens).run();
+}
+
+// 사장님이 정한 값이 있으면 그것(0 = 안 정함), 없으면 기본 한도
+function limitOf(st, k) {
+  return k in st ? Number(st[k]) || 0 : DEFAULT_LIMITS[k] || 0;
 }
 
 async function getSettings(env) {
@@ -840,7 +945,7 @@ async function getStats(env) {
       day: today,
       today: { requests: t?.requests || 0, tokens: t?.tokens || 0 },
       month: { requests: mo?.requests || 0, tokens: mo?.tokens || 0 },
-      limit: { tokens: Number(st.aiDailyTokens) || 0, requests: Number(st.aiDailyRequests) || 0 },
+      limit: { tokens: limitOf(st, 'aiDailyTokens'), requests: limitOf(st, 'aiDailyRequests'), rpm: limitOf(st, 'aiRpm') },
     },
   });
 }
@@ -850,7 +955,7 @@ async function saveSettings(request, env) {
   if (!body) return json({ error: '잘못된 요청입니다.' }, 400);
   const num = (v) => Math.max(0, Math.min(1e10, Math.floor(Number(v) || 0)));
   const stmts = [];
-  for (const k of ['aiDailyTokens', 'aiDailyRequests']) {
+  for (const k of ['aiDailyTokens', 'aiDailyRequests', 'aiRpm']) {
     if (k in body) stmts.push(env.DB.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').bind(k, String(num(body[k]))));
   }
   if (stmts.length) await env.DB.batch(stmts);
