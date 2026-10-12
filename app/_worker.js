@@ -11,6 +11,8 @@
  *   DELETE /api/images/:key               로그인. 올렸다가 취소한 사진 지우기
  *   GET    /img/:key                      공개. 사진 보기
  *   POST   /api/analyze  { image }        로그인. 사진을 보고 분류·제목·작가·태그 추천 (Gemini)
+ *   GET    /api/stats                     공개. 오늘·이번 달 AI 사용량과 하루 한도 (첫 화면 게임 카드)
+ *   PUT    /api/settings                  로그인. { aiDailyTokens, aiDailyRequests } 하루 한도 정하기
  *   POST   /api/group    { photos }       로그인. 여러 장을 같이 보고 같은 관람(같은 전시·영화)끼리 묶기
  *   GET    /api/artists                   공개. 작가 목록 + 설명
  *   PUT    /api/artists/:name             로그인. 작가 설명 직접 고치기
@@ -92,6 +94,11 @@ async function route(request, env, parts) {
     return methodNotAllowed();
   }
 
+  if (head === 'stats' && !id) return m === 'GET' ? getStats(env) : methodNotAllowed();
+  if (head === 'settings' && !id) {
+    return m === 'PUT' ? (await requireLogin(request, env)) || saveSettings(request, env) : methodNotAllowed();
+  }
+
   if (head === 'group' && !id) {
     return m === 'POST' ? (await requireLogin(request, env)) || groupPhotos(request, env) : methodNotAllowed();
   }
@@ -149,6 +156,8 @@ async function ensureSchema(env) {
       by_ai INTEGER NOT NULL DEFAULT 0,
       updated_at INTEGER NOT NULL
     )`),
+    env.DB.prepare('CREATE TABLE IF NOT EXISTS ai_usage (day TEXT PRIMARY KEY, requests INTEGER NOT NULL DEFAULT 0, tokens INTEGER NOT NULL DEFAULT 0)'),
+    env.DB.prepare('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)'),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS boards (
       id TEXT PRIMARY KEY,
       title TEXT NOT NULL DEFAULT '',
@@ -363,7 +372,7 @@ async function describeArtist(env, name) {
   ];
   let lastError = '';
   for (const a of attempts) {
-    const res = await callGemini(env.GEMINI_API_KEY, a.model, prompt, a.search);
+    const res = await callGemini(env, a.model, prompt, a.search);
     if (res.text) {
       const description = res.text.trim().slice(0, LIMITS.description);
       await upsertArtist(env, name, description, res.sources, true);
@@ -480,7 +489,7 @@ async function analyzeImage(request, env) {
   for (const a of attempts) {
     const generationConfig = { responseMimeType: 'application/json' };
     if (a.schema) generationConfig.responseSchema = schema;
-    const res = await geminiRequest(env.GEMINI_API_KEY, a.model, { contents: [{ role: 'user', parts }], generationConfig });
+    const res = await geminiRequest(env, a.model, { contents: [{ role: 'user', parts }], generationConfig });
     if (res.text) {
       const parsed = parseJsonLoose(res.text);
       if (parsed) return json({ suggestion: cleanAnalysis(parsed, existing), model: a.model });
@@ -573,7 +582,7 @@ async function groupPhotos(request, env) {
   for (const a of attempts) {
     const generationConfig = { responseMimeType: 'application/json' };
     if (a.schema) generationConfig.responseSchema = schema;
-    const res = await geminiRequest(env.GEMINI_API_KEY, a.model, { contents: [{ role: 'user', parts }], generationConfig });
+    const res = await geminiRequest(env, a.model, { contents: [{ role: 'user', parts }], generationConfig });
     if (res.text) {
       const parsed = parseJsonLoose(res.text);
       if (parsed) return json({ groups: cleanGroups(parsed, photos.length, existing), model: a.model });
@@ -586,44 +595,20 @@ async function groupPhotos(request, env) {
   return json({ error: `사진을 묶지 못했습니다. ${lastError}`.trim() }, 502);
 }
 
-async function geminiRequest(apiKey, model, body) {
-  let res;
-  try {
-    res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
-      body: JSON.stringify(body),
-    });
-  } catch {
-    return { error: '구글 AI에 연결하지 못했습니다.', status: 0 };
-  }
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const msg = data?.error?.message || `HTTP ${res.status}`;
-    return { error: res.status === 429 ? '구글 AI 사용량 한도에 걸렸습니다. 잠시 뒤 다시 해 주세요.' : msg, status: res.status };
-  }
+async function geminiRequest(env, model, body) {
+  const r = await geminiFetch(env, model, body);
+  if (r.error) return r;
+  const { data, res } = r;
   const text = (data?.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('').trim();
   return text ? { text, status: res.status } : { error: '구글 AI가 빈 답을 보냈습니다.', status: res.status };
 }
 
-async function callGemini(apiKey, model, prompt, withSearch) {
+async function callGemini(env, model, prompt, withSearch) {
   const body = { contents: [{ role: 'user', parts: [{ text: prompt }] }] };
   if (withSearch) body.tools = [{ google_search: {} }];
-  let res;
-  try {
-    res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
-      body: JSON.stringify(body),
-    });
-  } catch (err) {
-    return { error: '구글 AI에 연결하지 못했습니다.', status: 0 };
-  }
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const msg = data?.error?.message || `HTTP ${res.status}`;
-    return { error: res.status === 429 ? '구글 AI 사용량 한도에 걸렸습니다. 잠시 뒤 다시 해 주세요.' : msg, status: res.status };
-  }
+  const r = await geminiFetch(env, model, body);
+  if (r.error) return r;
+  const { data, res } = r;
   const cand = data?.candidates?.[0];
   const text = (cand?.content?.parts || []).map((p) => p.text || '').join('').trim();
   if (!text) return { error: '구글 AI가 빈 답을 보냈습니다.', status: res.status };
@@ -632,6 +617,76 @@ async function callGemini(apiKey, model, prompt, withSearch) {
     if (c.web?.uri && !sources.some((s) => s.uri === c.web.uri)) sources.push({ uri: c.web.uri, title: c.web.title || c.web.uri });
   }
   return { text: text.replace(/\*\*/g, ''), sources: sources.slice(0, 6) };
+}
+
+// 구글 AI 부르기 + 오늘 쓴 양 기록 (구글은 남은 양을 알려주지 않아서 앱이 직접 셉니다)
+async function geminiFetch(env, model, body) {
+  let res;
+  try {
+    res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    return { error: '구글 AI에 연결하지 못했습니다.', status: 0 };
+  }
+  const data = await res.json().catch(() => ({}));
+  if (res.status !== 400 && res.status !== 401 && res.status !== 403) {
+    await recordAi(env, Number(data?.usageMetadata?.totalTokenCount) || 0).catch(() => {});
+  }
+  if (!res.ok) {
+    const msg = data?.error?.message || `HTTP ${res.status}`;
+    return { error: res.status === 429 ? '구글 AI 사용량 한도에 걸렸습니다. 잠시 뒤 다시 해 주세요.' : msg, status: res.status };
+  }
+  return { data, res };
+}
+
+/* ─────────────── AI 사용량 · 설정 (첫 화면 게임 카드) ─────────────── */
+
+// 하루는 한국 시간 기준으로 나눕니다.
+function kstDay(ms = Date.now()) {
+  return new Date(ms + 9 * 3600 * 1000).toISOString().slice(0, 10);
+}
+
+async function recordAi(env, tokens) {
+  await env.DB.prepare(`INSERT INTO ai_usage (day, requests, tokens) VALUES (?, 1, ?)
+    ON CONFLICT(day) DO UPDATE SET requests = requests + 1, tokens = tokens + excluded.tokens`).bind(kstDay(), tokens).run();
+}
+
+async function getSettings(env) {
+  const { results } = await env.DB.prepare('SELECT key, value FROM settings').all();
+  return Object.fromEntries(results.map((r) => [r.key, r.value]));
+}
+
+async function getStats(env) {
+  const today = kstDay();
+  const month = today.slice(0, 7);
+  const t = await env.DB.prepare('SELECT requests, tokens FROM ai_usage WHERE day = ?').bind(today).first();
+  const mo = await env.DB.prepare('SELECT COALESCE(SUM(requests),0) AS requests, COALESCE(SUM(tokens),0) AS tokens FROM ai_usage WHERE day LIKE ?').bind(`${month}%`).first();
+  const st = await getSettings(env);
+  return json({
+    ai: {
+      provider: 'gemini',
+      configured: !!env.GEMINI_API_KEY,
+      day: today,
+      today: { requests: t?.requests || 0, tokens: t?.tokens || 0 },
+      month: { requests: mo?.requests || 0, tokens: mo?.tokens || 0 },
+      limit: { tokens: Number(st.aiDailyTokens) || 0, requests: Number(st.aiDailyRequests) || 0 },
+    },
+  });
+}
+
+async function saveSettings(request, env) {
+  const body = await readJson(request);
+  if (!body) return json({ error: '잘못된 요청입니다.' }, 400);
+  const num = (v) => Math.max(0, Math.min(1e10, Math.floor(Number(v) || 0)));
+  const stmts = [];
+  for (const k of ['aiDailyTokens', 'aiDailyRequests']) {
+    if (k in body) stmts.push(env.DB.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').bind(k, String(num(body[k]))));
+  }
+  if (stmts.length) await env.DB.batch(stmts);
+  return getStats(env);
 }
 
 /* ─────────────── 작업 계획 보드 (관리 화면) ─────────────── */

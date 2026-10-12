@@ -121,7 +121,7 @@ async function analyzeWithAi(key, items) {
   ].join('\n');
   let o;
   try {
-    o = await sample.json(prompt, { images: [blob], modelTier: 'default' });
+    o = await sample.json(prompt, { images: [blob], modelTier: 'default' }).finally(() => recordAi());
   } catch (err) {
     if (err?.code === 'not_granted') fail('AI 사용을 허락하지 않아서 분석하지 못했어요.', 403);
     if (err?.code === 'rate_limited') fail('AI를 너무 자주 불렀어요. 잠시 뒤 다시 해 주세요.', 429);
@@ -158,7 +158,7 @@ async function groupWithAi(photos, items) {
     ].filter(Boolean).join('\n');
     let o;
     try {
-      o = await sample.json(prompt, { images: chunk.map((p) => p.blob), modelTier: 'default' });
+      o = await sample.json(prompt, { images: chunk.map((p) => p.blob), modelTier: 'default' }).finally(() => recordAi());
     } catch (err) {
       if (err?.code === 'not_granted') fail('AI 사용을 허락하지 않아서 묶지 못했어요.', 403);
       if (err?.code === 'rate_limited') fail('AI를 너무 자주 불렀어요. 잠시 뒤 다시 해 주세요.', 429);
@@ -190,6 +190,16 @@ async function groupWithAi(photos, items) {
   return out;
 }
 
+// AI 부른 횟수를 하루 단위로 셉니다 (Claude 는 토큰 수를 알려주지 않음).
+const kstDay = () => new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
+async function recordAi() {
+  const { db } = await CAPS;
+  if (!db) return;
+  const ref = db.collection('ai_usage').doc(kstDay());
+  const cur = await ref.get().catch(() => null);
+  await ref.set({ day: kstDay(), requests: (cur?.exists ? Number(cur.data().requests) || 0 : 0) + 1 }).catch(() => {});
+}
+
 async function describeWithAi(name, items) {
   const sample = await need('sample');
   const mine = items.filter((i) => i.artist === name).slice(0, 15);
@@ -209,7 +219,7 @@ async function describeWithAi(name, items) {
     '"정확한 정보를 찾지 못했습니다."라고 쓰고, 알 수 있는 범위만 짧게 적어 주세요. 소개 글만 답하세요.',
   ].filter((l) => l !== null).join('\n');
   try {
-    const { text } = await sample(prompt, { modelTier: 'default' });
+    const { text } = await sample(prompt, { modelTier: 'default' }).finally(() => recordAi());
     return text.replace(/\*\*/g, '').trim().slice(0, LIMITS.description);
   } catch (err) {
     if (err?.code === 'not_granted') fail('AI 사용을 허락하지 않아서 만들지 못했어요.', 403);
@@ -266,6 +276,28 @@ export async function api(path, { method = 'GET', body, raw } = {}) {
       await Promise.all(prev.images.map((k) => assets?.delete(k).catch(() => {})));
       return { ok: true };
     }
+  }
+
+  if (head === 'stats' || head === 'settings') {
+    const setRef = db.collection('meta').doc('settings');
+    if (head === 'settings' && m === 'PUT') {
+      const n = Math.max(0, Math.floor(Number(body?.aiDailyRequests) || 0));
+      await setRef.set({ aiDailyRequests: n }).catch(dbError);
+    }
+    const day = kstDay();
+    const snap = await db.collection('ai_usage').limit(1000).get().catch(dbError);
+    const rows = snap.docs.filter((d) => d.exists).map((d) => d.data());
+    const today = rows.find((r) => r.day === day)?.requests || 0;
+    const month = rows.filter((r) => String(r.day).startsWith(day.slice(0, 7))).reduce((a, r) => a + (Number(r.requests) || 0), 0);
+    const st = await setRef.get().catch(() => null);
+    const sample = (await CAPS).sample;
+    return {
+      ai: {
+        provider: 'claude', configured: !!sample, day,
+        today: { requests: today, tokens: 0 }, month: { requests: month, tokens: 0 },
+        limit: { tokens: 0, requests: st?.exists ? Number(st.data().aiDailyRequests) || 0 : 0 },
+      },
+    };
   }
 
   if (head === 'group' && m === 'POST') {

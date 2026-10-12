@@ -18,6 +18,12 @@
   --bg-3: #f9fafb;
   --red: #f04452;
   --danger-bg: #ffeeee;
+  --green: #03b26c;
+  --orange: #fe9800;
+  --hero-bg: #191f28;
+  --hero-fg: #ffffff;
+  --hero-sub: #b0b8c1;
+  --hero-track: rgba(255, 255, 255, .14);
   --card: #ffffff;
   --shadow: 0 2px 12px rgba(0, 29, 58, 0.06);
   --sheet-shadow: 0 -8px 40px rgba(0, 0, 0, 0.12);
@@ -40,6 +46,8 @@
     --card: #202027;
     --shadow: none;
     --sheet-shadow: 0 -8px 40px rgba(0, 0, 0, 0.5);
+    --hero-bg: #24242c;
+    --hero-sub: #9ea6b0;
     color-scheme: dark;
       --danger-bg: #3a1f23;
   } }
@@ -57,6 +65,8 @@
     --card: #202027;
     --shadow: none;
     --sheet-shadow: 0 -8px 40px rgba(0, 0, 0, 0.5);
+    --hero-bg: #24242c;
+    --hero-sub: #9ea6b0;
     color-scheme: dark;
       --danger-bg: #3a1f23;
   }
@@ -431,6 +441,56 @@ textarea.field { min-height: 120px; line-height: 1.6; }
 .bulk-thumbs img.fail { opacity: .3; outline: 2px solid var(--red); }
 .bulk-main strong em { font-style: normal; font-size: 13px; color: var(--blue); margin-left: 4px; }
 
+/* ── 첫 화면 게임 카드: 전시 레벨 · AI 에너지 ── */
+.hero {
+  background: var(--hero-bg); color: var(--hero-fg); border-radius: 24px; padding: 20px;
+  margin: 4px 0 18px; display: flex; flex-direction: column; gap: 10px;
+}
+.hero.levelup { animation: levelup .9s ease; }
+@keyframes levelup { 30% { transform: scale(1.03); box-shadow: 0 0 0 6px rgba(49, 130, 246, .35); } }
+@media (prefers-reduced-motion: reduce) { .hero.levelup { animation: none; } }
+.hero-top { display: flex; align-items: center; gap: 14px; }
+.lv-badge {
+  flex: none; width: 60px; height: 60px; border-radius: 18px; background: var(--blue); color: #fff;
+  display: flex; align-items: baseline; justify-content: center; padding-top: 12px;
+  font-size: 30px; font-weight: 800; letter-spacing: -0.04em; font-variant-numeric: tabular-nums;
+  box-shadow: inset 0 -4px 0 rgba(0, 0, 0, .18);
+}
+.lv-badge small { font-size: 13px; font-weight: 800; margin-right: 1px; opacity: .85; }
+.hero-title { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.hero-title span { font-size: 13px; font-weight: 700; color: var(--hero-sub); }
+.hero-title strong { font-size: 21px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.25; }
+.hero-visits { flex: none; text-align: right; display: flex; flex-direction: column; line-height: 1.1; }
+.hero-visits b { font-size: 30px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.hero-visits small { font-size: 12px; font-weight: 700; color: var(--hero-sub); }
+.bar { display: block; height: 12px; border-radius: 6px; background: var(--hero-track); overflow: hidden; }
+.bar i { display: block; height: 100%; border-radius: 6px; background: var(--blue); min-width: 6px; transition: width .6s cubic-bezier(.2,.8,.2,1); }
+.bar.xp { height: 14px; }
+.bar.xp i { background: repeating-linear-gradient(90deg, var(--blue) 0 18px, #4c93f7 18px 22px); }
+.bar-caption { margin: 0; font-size: 13px; font-weight: 600; color: var(--hero-sub); }
+.bar-caption b { color: var(--hero-fg); }
+.hero-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.hero-chips span { font-size: 13px; font-weight: 600; color: var(--hero-sub); background: var(--hero-track); padding: 5px 10px; border-radius: 999px; }
+.hero-chips b { color: var(--hero-fg); font-variant-numeric: tabular-nums; }
+.energy {
+  display: flex; flex-direction: column; gap: 8px; text-align: left; width: 100%;
+  margin-top: 4px; padding: 14px; border-radius: 16px; background: var(--hero-track); color: var(--hero-fg);
+}
+.energy:active { opacity: .85; }
+.energy-head { display: flex; justify-content: space-between; align-items: center; font-size: 14px; font-weight: 700; }
+.energy-head b { font-variant-numeric: tabular-nums; }
+.energy-label { display: inline-flex; align-items: center; gap: 4px; }
+.energy-label svg { width: 16px; height: 16px; }
+.energy-bar { background: rgba(255, 255, 255, .12); }
+.energy-bar.high i { background: var(--green); }
+.energy-bar.mid i { background: var(--orange); }
+.energy-bar.low i { background: var(--red); }
+.energy-bar.none i { background: repeating-linear-gradient(45deg, rgba(255,255,255,.25) 0 8px, rgba(255,255,255,.12) 8px 16px); }
+.energy-table { display: flex; flex-direction: column; gap: 8px; }
+.energy-table div { display: flex; justify-content: space-between; gap: 12px; padding: 14px 16px; border-radius: 14px; background: var(--bg-2); }
+.energy-table span { color: var(--text-2); font-weight: 600; }
+.energy-table b { font-variant-numeric: tabular-nums; }
+
 /* 관리 화면 — 작업 계획 보드 */
 
 .back-link { display: inline-flex; align-items: center; gap: 2px; color: var(--text-2); font-weight: 600; font-size: 15px; text-decoration: none; }
@@ -625,6 +685,7 @@ input[type=range]::-moz-range-thumb { width: 24px; height: 24px; border-radius: 
   <main class="page">
     <!-- 전체 레퍼런스 -->
     <section id="view-home" class="view">
+      <section class="hero" id="hero" aria-label="내 전시 레벨"></section>
       <div class="cat-tabs" id="catTabs" role="tablist" aria-label="분류"></div>
       <label class="search">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
@@ -956,7 +1017,7 @@ async function analyzeWithAi(key, items) {
   ].join('\n');
   let o;
   try {
-    o = await sample.json(prompt, { images: [blob], modelTier: 'default' });
+    o = await sample.json(prompt, { images: [blob], modelTier: 'default' }).finally(() => recordAi());
   } catch (err) {
     if (err?.code === 'not_granted') fail('AI 사용을 허락하지 않아서 분석하지 못했어요.', 403);
     if (err?.code === 'rate_limited') fail('AI를 너무 자주 불렀어요. 잠시 뒤 다시 해 주세요.', 429);
@@ -993,7 +1054,7 @@ async function groupWithAi(photos, items) {
     ].filter(Boolean).join('\n');
     let o;
     try {
-      o = await sample.json(prompt, { images: chunk.map((p) => p.blob), modelTier: 'default' });
+      o = await sample.json(prompt, { images: chunk.map((p) => p.blob), modelTier: 'default' }).finally(() => recordAi());
     } catch (err) {
       if (err?.code === 'not_granted') fail('AI 사용을 허락하지 않아서 묶지 못했어요.', 403);
       if (err?.code === 'rate_limited') fail('AI를 너무 자주 불렀어요. 잠시 뒤 다시 해 주세요.', 429);
@@ -1025,6 +1086,16 @@ async function groupWithAi(photos, items) {
   return out;
 }
 
+// AI 부른 횟수를 하루 단위로 셉니다 (Claude 는 토큰 수를 알려주지 않음).
+const kstDay = () => new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
+async function recordAi() {
+  const { db } = await CAPS;
+  if (!db) return;
+  const ref = db.collection('ai_usage').doc(kstDay());
+  const cur = await ref.get().catch(() => null);
+  await ref.set({ day: kstDay(), requests: (cur?.exists ? Number(cur.data().requests) || 0 : 0) + 1 }).catch(() => {});
+}
+
 async function describeWithAi(name, items) {
   const sample = await need('sample');
   const mine = items.filter((i) => i.artist === name).slice(0, 15);
@@ -1044,7 +1115,7 @@ async function describeWithAi(name, items) {
     '"정확한 정보를 찾지 못했습니다."라고 쓰고, 알 수 있는 범위만 짧게 적어 주세요. 소개 글만 답하세요.',
   ].filter((l) => l !== null).join('\n');
   try {
-    const { text } = await sample(prompt, { modelTier: 'default' });
+    const { text } = await sample(prompt, { modelTier: 'default' }).finally(() => recordAi());
     return text.replace(/\*\*/g, '').trim().slice(0, LIMITS.description);
   } catch (err) {
     if (err?.code === 'not_granted') fail('AI 사용을 허락하지 않아서 만들지 못했어요.', 403);
@@ -1101,6 +1172,28 @@ async function api(path, { method = 'GET', body, raw } = {}) {
       await Promise.all(prev.images.map((k) => assets?.delete(k).catch(() => {})));
       return { ok: true };
     }
+  }
+
+  if (head === 'stats' || head === 'settings') {
+    const setRef = db.collection('meta').doc('settings');
+    if (head === 'settings' && m === 'PUT') {
+      const n = Math.max(0, Math.floor(Number(body?.aiDailyRequests) || 0));
+      await setRef.set({ aiDailyRequests: n }).catch(dbError);
+    }
+    const day = kstDay();
+    const snap = await db.collection('ai_usage').limit(1000).get().catch(dbError);
+    const rows = snap.docs.filter((d) => d.exists).map((d) => d.data());
+    const today = rows.find((r) => r.day === day)?.requests || 0;
+    const month = rows.filter((r) => String(r.day).startsWith(day.slice(0, 7))).reduce((a, r) => a + (Number(r.requests) || 0), 0);
+    const st = await setRef.get().catch(() => null);
+    const sample = (await CAPS).sample;
+    return {
+      ai: {
+        provider: 'claude', configured: !!sample, day,
+        today: { requests: today, tokens: 0 }, month: { requests: month, tokens: 0 },
+        limit: { tokens: 0, requests: st?.exists ? Number(st.data().aiDailyRequests) || 0 : 0 },
+      },
+    };
   }
 
   if (head === 'group' && m === 'POST') {
@@ -2432,6 +2525,7 @@ const state = {
   sort: 'new',
   mode: localGet('viewMode') || 'grid',
   artistQ: '',
+  stats: null, // AI 사용량 (첫 화면 게임 카드)
 };
 
 // 분류 키맵: 전시관 · 영화 · 그 외 순서. 키보드 1·2·3 (전체 0)
@@ -2453,11 +2547,18 @@ init();
 async function init() {
   bindStatic();
   renderSkeleton();
-  const [session] = await Promise.all([api('/api/session').catch(() => ({})), loadAll()]);
+  const [session] = await Promise.all([api('/api/session').catch(() => ({})), loadAll(), loadStats()]);
   state.loggedIn = !!session.loggedIn;
   state.open = !!session.open;
   renderAuth();
   route();
+}
+
+async function loadStats() {
+  try {
+    state.stats = await api('/api/stats');
+  } catch { /* 없으면 카드에 '모름'으로 */ }
+  renderHero();
 }
 
 async function loadAll() {
@@ -2474,6 +2575,7 @@ async function loadAll() {
 }
 
 function renderAll() {
+  renderHero();
   renderCatTabs();
   renderTagChips();
   renderGrid();
@@ -2585,6 +2687,124 @@ function filtered() {
     artist: (a, b) => (a.artist || '힣').localeCompare(b.artist || '힣', 'ko') || b.createdAt - a.createdAt,
   }[state.sort];
   return list.sort(by);
+}
+
+/* ─────────────── 첫 화면 게임 카드: 전시 레벨 · AI 에너지 ─────────────── */
+
+// [이만큼 다녀오면, 칭호]. 마지막 칭호 뒤로는 20번마다 ★ 레벨이 오릅니다.
+const LEVELS = [
+  [0, '전시 새싹'], [1, '첫 관람객'], [3, '산책하는 관람객'], [6, '전시 탐험가'], [10, '단골 관람객'],
+  [15, '작품 수집가'], [22, '큐레이터 견습생'], [30, '갤러리 마스터'], [45, '아트 순례자'], [60, '전설의 관람객'],
+];
+
+function levelOf(n) {
+  let i = 0;
+  while (i + 1 < LEVELS.length && n >= LEVELS[i + 1][0]) i++;
+  if (i === LEVELS.length - 1) {
+    const extra = Math.floor((n - LEVELS[i][0]) / 20);
+    const from = LEVELS[i][0] + extra * 20;
+    return { lv: i + 1 + extra, title: LEVELS[i][1] + (extra ? ` ★${extra}` : ''), from, to: from + 20, nextTitle: `${LEVELS[i][1]} ★${extra + 1}` };
+  }
+  return { lv: i + 1, title: LEVELS[i][1], from: LEVELS[i][0], to: LEVELS[i + 1][0], nextTitle: LEVELS[i + 1][1] };
+}
+
+const num = (n) => Number(n || 0).toLocaleString('ko-KR');
+
+function energyOf(ai) {
+  if (!ai) return null;
+  const parts = [];
+  if (ai.limit?.tokens) parts.push(1 - ai.today.tokens / ai.limit.tokens);
+  if (ai.limit?.requests) parts.push(1 - ai.today.requests / ai.limit.requests);
+  if (!parts.length) return null;
+  return Math.max(0, Math.min(1, Math.min(...parts)));
+}
+
+function renderHero() {
+  const box = $('#hero');
+  if (!box) return;
+  const ex = state.items.filter((i) => i.category === 'exhibition');
+  const visits = ex.length;
+  const L = levelOf(visits);
+  const pct = Math.round(((visits - L.from) / (L.to - L.from)) * 100);
+  const now = new Date();
+  const monthVisits = ex.filter((i) => { const d = new Date(i.createdAt); return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth(); }).length;
+  const movies = state.items.filter((i) => i.category === 'movie').length;
+  const ai = state.stats?.ai;
+  const en = energyOf(ai);
+  const enPct = en == null ? null : Math.round(en * 100);
+  const enLevel = enPct == null ? 'none' : enPct > 50 ? 'high' : enPct > 20 ? 'mid' : 'low';
+  const isClaude = ai?.provider === 'claude';
+  const aiCaption = !ai
+    ? 'AI 사용량을 불러오지 못했어요'
+    : !ai.configured
+      ? 'AI 키가 아직 없어요'
+      : `오늘 ${num(ai.today.requests)}번${isClaude ? '' : ` · ${num(ai.today.tokens)}토큰`} 썼어요` +
+        (en == null ? ' · 눌러서 하루 한도 정하기' : ` · 하루 한도 ${ai.limit.tokens ? `${num(ai.limit.tokens)}토큰` : `${num(ai.limit.requests)}번`}`);
+
+  box.innerHTML = `
+    <div class="hero-top">
+      <div class="lv-badge"><small>Lv.</small>${L.lv}</div>
+      <div class="hero-title"><span>전시 레벨</span><strong>${esc(L.title)}</strong></div>
+      <div class="hero-visits"><b>${state.loaded ? visits : '-'}</b><small>번 다녀옴</small></div>
+    </div>
+    <div class="bar xp" role="progressbar" aria-label="다음 레벨까지" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><i style="width:${pct}%"></i></div>
+    <p class="bar-caption">다음 레벨 <b>${esc(L.nextTitle)}</b>까지 전시 ${L.to - visits}번</p>
+    <div class="hero-chips">
+      <span>이번 달 전시 <b>${monthVisits}</b></span><span>영화 <b>${movies}</b></span><span>작가 <b>${state.artists.length}</b></span>
+    </div>
+    <button class="energy" id="energyBtn" type="button">
+      <span class="energy-head"><span class="energy-label">${ICON.spark}AI 에너지${isClaude ? ' (Claude)' : ''}</span><b>${enPct == null ? '한도 미정' : `${enPct}%`}</b></span>
+      <span class="bar energy-bar ${enLevel}"><i style="width:${enPct == null ? 100 : enPct}%"></i></span>
+      <span class="bar-caption">${esc(aiCaption)}</span>
+    </button>`;
+  $('#energyBtn').onclick = openEnergy;
+
+  // 레벨 업 축하 (지난번 본 레벨보다 오르면 한 번)
+  if (state.loaded) {
+    const seen = Number(localGet('lv') || 0);
+    if (seen && L.lv > seen) {
+      toast(`레벨 업! Lv.${L.lv} ${L.title}`);
+      box.classList.remove('levelup'); void box.offsetWidth; box.classList.add('levelup');
+    }
+    localSet('lv', String(L.lv));
+  }
+}
+
+function openEnergy() {
+  const ai = state.stats?.ai;
+  if (!ai) return toast('AI 사용량을 불러오지 못했어요');
+  const isClaude = ai.provider === 'claude';
+  openSheet(`
+    <h2>AI 에너지</h2>
+    <div class="energy-table">
+      <div><span>오늘 (${esc(ai.day)})</span><b>${num(ai.today.requests)}번${isClaude ? '' : ` · ${num(ai.today.tokens)}토큰`}</b></div>
+      <div><span>이번 달</span><b>${num(ai.month.requests)}번${isClaude ? '' : ` · ${num(ai.month.tokens)}토큰`}</b></div>
+    </div>
+    <p class="hint" style="margin:12px 0 20px;line-height:1.6">${isClaude
+      ? 'Claude 판은 사장님 Claude 계정 사용량을 씁니다. 남은 양은 Claude가 알려주지 않아서, 이 앱에서 부른 횟수만 셉니다.'
+      : '구글은 남은 토큰을 앱에 알려주지 않아요. 그래서 이 앱이 쓴 양을 직접 세고, 아래 하루 한도에서 빼서 보여줍니다. 무료 한도는 Google AI Studio 의 사용량 화면에서 확인할 수 있어요.'}</p>
+    <form class="form" id="energyForm">
+      ${isClaude ? '' : `<label><span class="label">하루 토큰 한도 (0 = 안 정함)</span>
+        <input class="field" id="limTokens" type="number" min="0" step="1000" inputmode="numeric" value="${ai.limit.tokens || ''}" placeholder="예) 1000000" /></label>`}
+      <label><span class="label">하루 AI 사용 횟수 한도 (0 = 안 정함)</span>
+        <input class="field" id="limReq" type="number" min="0" step="1" inputmode="numeric" value="${ai.limit.requests || ''}" placeholder="예) 200" /></label>
+      <button class="btn block" id="limSave" type="submit">저장</button>
+    </form>`);
+  $('#energyForm').onsubmit = async (e) => {
+    e.preventDefault();
+    setBusy($('#limSave'), true);
+    try {
+      const body = { aiDailyRequests: $('#limReq').value };
+      if ($('#limTokens')) body.aiDailyTokens = $('#limTokens').value;
+      state.stats = await api('/api/settings', { method: 'PUT', body });
+      await closeSheet();
+      renderHero();
+      toast('하루 한도를 저장했어요');
+    } catch (err) {
+      toast(err.message);
+      setBusy($('#limSave'), false);
+    }
+  };
 }
 
 function setCat(c) {
@@ -2793,6 +3013,7 @@ async function runAi(name) {
   try {
     await api(`/api/artists/${encodeURIComponent(name)}/ai`, { method: 'POST' });
     await refreshArtists();
+    loadStats();
     toast('작가 소개를 만들었어요');
   } catch (err) {
     toast(err.message);
@@ -3005,6 +3226,7 @@ function openEditor(it = null) {
       const before = draft.tags.length;
       if (s.tags?.length) addTags(s.tags.join(','));
       if (draft.tags.length > before) filled.push('태그');
+      loadStats();
       hint(filled.length ? `AI가 채웠어요: ${filled.join(', ')}. 틀리면 고쳐 주세요.` : 'AI가 더 채울 것을 찾지 못했어요.');
       // 같은 관람 항목이 이미 있으면 거기에 합칠 수 있게 단추를 보여줍니다.
       const same = !it && findSameViewing({ category: draft.category, title: $('#fTitle').value, place: $('#fPlace').value });
@@ -3297,6 +3519,7 @@ async function runBulk(files) {
     renderAll();
   }
   await refreshArtists().catch(() => {});
+  loadStats();
   const msg = [added && `새 항목 ${added}개`, merged && `기존 항목에 더함 ${merged}개`, failed && `실패 ${failed}개`].filter(Boolean).join(' · ') || '저장한 것 없음';
   step(`다 됐어요: 사진 ${ok.length}장 → ${msg}`);
   if ($('#bulkSum')) $('#bulkSum').textContent = (aiNote ? `${aiNote}. ` : '') + '잘못 묶였으면 항목을 눌러 사진을 빼거나 고쳐 주세요.';

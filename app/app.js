@@ -15,6 +15,7 @@ const state = {
   sort: 'new',
   mode: localGet('viewMode') || 'grid',
   artistQ: '',
+  stats: null, // AI 사용량 (첫 화면 게임 카드)
 };
 
 // 분류 키맵: 전시관 · 영화 · 그 외 순서. 키보드 1·2·3 (전체 0)
@@ -36,11 +37,18 @@ init();
 async function init() {
   bindStatic();
   renderSkeleton();
-  const [session] = await Promise.all([api('/api/session').catch(() => ({})), loadAll()]);
+  const [session] = await Promise.all([api('/api/session').catch(() => ({})), loadAll(), loadStats()]);
   state.loggedIn = !!session.loggedIn;
   state.open = !!session.open;
   renderAuth();
   route();
+}
+
+async function loadStats() {
+  try {
+    state.stats = await api('/api/stats');
+  } catch { /* 없으면 카드에 '모름'으로 */ }
+  renderHero();
 }
 
 async function loadAll() {
@@ -57,6 +65,7 @@ async function loadAll() {
 }
 
 function renderAll() {
+  renderHero();
   renderCatTabs();
   renderTagChips();
   renderGrid();
@@ -167,6 +176,124 @@ function filtered() {
     artist: (a, b) => (a.artist || '힣').localeCompare(b.artist || '힣', 'ko') || b.createdAt - a.createdAt,
   }[state.sort];
   return list.sort(by);
+}
+
+/* ─────────────── 첫 화면 게임 카드: 전시 레벨 · AI 에너지 ─────────────── */
+
+// [이만큼 다녀오면, 칭호]. 마지막 칭호 뒤로는 20번마다 ★ 레벨이 오릅니다.
+const LEVELS = [
+  [0, '전시 새싹'], [1, '첫 관람객'], [3, '산책하는 관람객'], [6, '전시 탐험가'], [10, '단골 관람객'],
+  [15, '작품 수집가'], [22, '큐레이터 견습생'], [30, '갤러리 마스터'], [45, '아트 순례자'], [60, '전설의 관람객'],
+];
+
+function levelOf(n) {
+  let i = 0;
+  while (i + 1 < LEVELS.length && n >= LEVELS[i + 1][0]) i++;
+  if (i === LEVELS.length - 1) {
+    const extra = Math.floor((n - LEVELS[i][0]) / 20);
+    const from = LEVELS[i][0] + extra * 20;
+    return { lv: i + 1 + extra, title: LEVELS[i][1] + (extra ? ` ★${extra}` : ''), from, to: from + 20, nextTitle: `${LEVELS[i][1]} ★${extra + 1}` };
+  }
+  return { lv: i + 1, title: LEVELS[i][1], from: LEVELS[i][0], to: LEVELS[i + 1][0], nextTitle: LEVELS[i + 1][1] };
+}
+
+const num = (n) => Number(n || 0).toLocaleString('ko-KR');
+
+function energyOf(ai) {
+  if (!ai) return null;
+  const parts = [];
+  if (ai.limit?.tokens) parts.push(1 - ai.today.tokens / ai.limit.tokens);
+  if (ai.limit?.requests) parts.push(1 - ai.today.requests / ai.limit.requests);
+  if (!parts.length) return null;
+  return Math.max(0, Math.min(1, Math.min(...parts)));
+}
+
+function renderHero() {
+  const box = $('#hero');
+  if (!box) return;
+  const ex = state.items.filter((i) => i.category === 'exhibition');
+  const visits = ex.length;
+  const L = levelOf(visits);
+  const pct = Math.round(((visits - L.from) / (L.to - L.from)) * 100);
+  const now = new Date();
+  const monthVisits = ex.filter((i) => { const d = new Date(i.createdAt); return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth(); }).length;
+  const movies = state.items.filter((i) => i.category === 'movie').length;
+  const ai = state.stats?.ai;
+  const en = energyOf(ai);
+  const enPct = en == null ? null : Math.round(en * 100);
+  const enLevel = enPct == null ? 'none' : enPct > 50 ? 'high' : enPct > 20 ? 'mid' : 'low';
+  const isClaude = ai?.provider === 'claude';
+  const aiCaption = !ai
+    ? 'AI 사용량을 불러오지 못했어요'
+    : !ai.configured
+      ? 'AI 키가 아직 없어요'
+      : `오늘 ${num(ai.today.requests)}번${isClaude ? '' : ` · ${num(ai.today.tokens)}토큰`} 썼어요` +
+        (en == null ? ' · 눌러서 하루 한도 정하기' : ` · 하루 한도 ${ai.limit.tokens ? `${num(ai.limit.tokens)}토큰` : `${num(ai.limit.requests)}번`}`);
+
+  box.innerHTML = `
+    <div class="hero-top">
+      <div class="lv-badge"><small>Lv.</small>${L.lv}</div>
+      <div class="hero-title"><span>전시 레벨</span><strong>${esc(L.title)}</strong></div>
+      <div class="hero-visits"><b>${state.loaded ? visits : '-'}</b><small>번 다녀옴</small></div>
+    </div>
+    <div class="bar xp" role="progressbar" aria-label="다음 레벨까지" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><i style="width:${pct}%"></i></div>
+    <p class="bar-caption">다음 레벨 <b>${esc(L.nextTitle)}</b>까지 전시 ${L.to - visits}번</p>
+    <div class="hero-chips">
+      <span>이번 달 전시 <b>${monthVisits}</b></span><span>영화 <b>${movies}</b></span><span>작가 <b>${state.artists.length}</b></span>
+    </div>
+    <button class="energy" id="energyBtn" type="button">
+      <span class="energy-head"><span class="energy-label">${ICON.spark}AI 에너지${isClaude ? ' (Claude)' : ''}</span><b>${enPct == null ? '한도 미정' : `${enPct}%`}</b></span>
+      <span class="bar energy-bar ${enLevel}"><i style="width:${enPct == null ? 100 : enPct}%"></i></span>
+      <span class="bar-caption">${esc(aiCaption)}</span>
+    </button>`;
+  $('#energyBtn').onclick = openEnergy;
+
+  // 레벨 업 축하 (지난번 본 레벨보다 오르면 한 번)
+  if (state.loaded) {
+    const seen = Number(localGet('lv') || 0);
+    if (seen && L.lv > seen) {
+      toast(`레벨 업! Lv.${L.lv} ${L.title}`);
+      box.classList.remove('levelup'); void box.offsetWidth; box.classList.add('levelup');
+    }
+    localSet('lv', String(L.lv));
+  }
+}
+
+function openEnergy() {
+  const ai = state.stats?.ai;
+  if (!ai) return toast('AI 사용량을 불러오지 못했어요');
+  const isClaude = ai.provider === 'claude';
+  openSheet(`
+    <h2>AI 에너지</h2>
+    <div class="energy-table">
+      <div><span>오늘 (${esc(ai.day)})</span><b>${num(ai.today.requests)}번${isClaude ? '' : ` · ${num(ai.today.tokens)}토큰`}</b></div>
+      <div><span>이번 달</span><b>${num(ai.month.requests)}번${isClaude ? '' : ` · ${num(ai.month.tokens)}토큰`}</b></div>
+    </div>
+    <p class="hint" style="margin:12px 0 20px;line-height:1.6">${isClaude
+      ? 'Claude 판은 사장님 Claude 계정 사용량을 씁니다. 남은 양은 Claude가 알려주지 않아서, 이 앱에서 부른 횟수만 셉니다.'
+      : '구글은 남은 토큰을 앱에 알려주지 않아요. 그래서 이 앱이 쓴 양을 직접 세고, 아래 하루 한도에서 빼서 보여줍니다. 무료 한도는 Google AI Studio 의 사용량 화면에서 확인할 수 있어요.'}</p>
+    <form class="form" id="energyForm">
+      ${isClaude ? '' : `<label><span class="label">하루 토큰 한도 (0 = 안 정함)</span>
+        <input class="field" id="limTokens" type="number" min="0" step="1000" inputmode="numeric" value="${ai.limit.tokens || ''}" placeholder="예) 1000000" /></label>`}
+      <label><span class="label">하루 AI 사용 횟수 한도 (0 = 안 정함)</span>
+        <input class="field" id="limReq" type="number" min="0" step="1" inputmode="numeric" value="${ai.limit.requests || ''}" placeholder="예) 200" /></label>
+      <button class="btn block" id="limSave" type="submit">저장</button>
+    </form>`);
+  $('#energyForm').onsubmit = async (e) => {
+    e.preventDefault();
+    setBusy($('#limSave'), true);
+    try {
+      const body = { aiDailyRequests: $('#limReq').value };
+      if ($('#limTokens')) body.aiDailyTokens = $('#limTokens').value;
+      state.stats = await api('/api/settings', { method: 'PUT', body });
+      await closeSheet();
+      renderHero();
+      toast('하루 한도를 저장했어요');
+    } catch (err) {
+      toast(err.message);
+      setBusy($('#limSave'), false);
+    }
+  };
 }
 
 function setCat(c) {
@@ -375,6 +502,7 @@ async function runAi(name) {
   try {
     await api(`/api/artists/${encodeURIComponent(name)}/ai`, { method: 'POST' });
     await refreshArtists();
+    loadStats();
     toast('작가 소개를 만들었어요');
   } catch (err) {
     toast(err.message);
@@ -587,6 +715,7 @@ function openEditor(it = null) {
       const before = draft.tags.length;
       if (s.tags?.length) addTags(s.tags.join(','));
       if (draft.tags.length > before) filled.push('태그');
+      loadStats();
       hint(filled.length ? `AI가 채웠어요: ${filled.join(', ')}. 틀리면 고쳐 주세요.` : 'AI가 더 채울 것을 찾지 못했어요.');
       // 같은 관람 항목이 이미 있으면 거기에 합칠 수 있게 단추를 보여줍니다.
       const same = !it && findSameViewing({ category: draft.category, title: $('#fTitle').value, place: $('#fPlace').value });
@@ -879,6 +1008,7 @@ async function runBulk(files) {
     renderAll();
   }
   await refreshArtists().catch(() => {});
+  loadStats();
   const msg = [added && `새 항목 ${added}개`, merged && `기존 항목에 더함 ${merged}개`, failed && `실패 ${failed}개`].filter(Boolean).join(' · ') || '저장한 것 없음';
   step(`다 됐어요: 사진 ${ok.length}장 → ${msg}`);
   if ($('#bulkSum')) $('#bulkSum').textContent = (aiNote ? `${aiNote}. ` : '') + '잘못 묶였으면 항목을 눌러 사진을 빼거나 고쳐 주세요.';
