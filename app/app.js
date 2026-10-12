@@ -600,6 +600,58 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
   navigator.serviceWorker.register('/sw.js').catch(() => {});
 }
 
+/* ─────────────── 휴대폰 알림 (AI 대기 일이 끝나면) ─────────────── */
+
+const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+
+async function pushSubscription() {
+  if (!pushSupported()) return null;
+  try { return await (await navigator.serviceWorker.getRegistration('/'))?.pushManager.getSubscription() || null; } catch { return null; }
+}
+
+const b64ToBytes = (s) => {
+  const b = atob(s.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (s.length % 4)) % 4));
+  return Uint8Array.from(b, (c) => c.charCodeAt(0));
+};
+
+async function pushOnFlow(info, ios, standalone) {
+  if (!pushSupported()) {
+    return info(ios && !standalone
+      ? '아이폰은 <b>홈 화면에 추가한 앱</b>에서만 알림을 받을 수 있어요 (iOS 16.4 이상). 위 "휴대폰 홈 화면에 앱으로 추가"를 한 뒤, 홈 화면의 레퍼런스 앱에서 다시 눌러 주세요.'
+      : '이 브라우저는 웹 알림을 지원하지 않아요. 크롬·사파리 최신판이나 홈 화면 앱에서 해 주세요.');
+  }
+  try {
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') return info('알림이 허용되지 않았어요. 휴대폰 설정 → 알림 → 레퍼런스(또는 브라우저)에서 허용해 주세요.');
+    const reg = await navigator.serviceWorker.register('/sw.js');
+    await navigator.serviceWorker.ready;
+    const { key } = await api('/api/push/key');
+    const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(key) });
+    const r = await api('/api/push/subscribe', { method: 'POST', body: { ...sub.toJSON(), ua: navigator.userAgent } });
+    $('#pushState').textContent = '켜짐 · 끄기';
+    info(`알림을 켰어요 (알림 받는 기기 ${r.devices}대). 기다리던 AI 일이 끝나면 알려 드려요. <button type="button" class="btn small" id="pushTest">시험 알림 보내기</button>`);
+    $('#pushTest').onclick = async () => {
+      setBusy($('#pushTest'), true);
+      try {
+        const t = await api('/api/push/test', { method: 'POST' });
+        toast(t.sent ? `시험 알림을 보냈어요 (${t.sent}대)` : `보내지 못했어요 ${t.errors?.[0] || ''}`);
+      } catch (err) { toast(err.message); }
+      setBusy($('#pushTest'), false);
+    };
+  } catch (err) {
+    info(`알림을 켜지 못했어요: ${esc(err.message || String(err))}`);
+  }
+}
+
+async function pushOffFlow(sub, info) {
+  try {
+    await api('/api/push/unsubscribe', { method: 'POST', body: { endpoint: sub.endpoint } });
+    await sub.unsubscribe();
+    $('#pushState').textContent = '켜기';
+    info('이 기기의 알림을 껐어요.');
+  } catch (err) { info(`알림을 끄지 못했어요: ${esc(err.message)}`); }
+}
+
 function openMore() {
   const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
   const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
@@ -609,6 +661,7 @@ function openMore() {
       <li><button data-a="export">백업 받기 <span class="n">글·작가·계획·가볼 곳</span></button></li>
       <li><button data-a="import">백업에서 되살리기</button></li>
       ${standalone ? '' : '<li><button data-a="install">휴대폰 홈 화면에 앱으로 추가</button></li>'}
+      <li><button data-a="push" id="pushBtn">휴대폰 알림 <span class="n" id="pushState">확인 중…</span></button></li>
       <li><button data-a="login">${state.loggedIn && !state.open ? '로그아웃' : '로그인'}</button></li>
     </ul>
     <input type="file" id="importInput" accept="application/json,.json" hidden />
@@ -635,8 +688,15 @@ function openMore() {
         ? '아이폰: 사파리 아래쪽 <b>공유 단추(네모에 위 화살표)</b> → <b>홈 화면에 추가</b> → 추가. 홈 화면의 "레퍼런스" 아이콘으로 앱처럼 열려요.'
         : '안드로이드·크롬: 오른쪽 위 <b>⋮</b> → <b>홈 화면에 추가</b>(또는 앱 설치) → 설치.');
     }
+    if (a === 'push') {
+      if (!state.loggedIn) return openLogin(openMore);
+      const on = await pushSubscription();
+      if (on) return pushOffFlow(on, info);
+      return pushOnFlow(info, ios, standalone);
+    }
     if (a === 'login') { await closeSheet(); state.loggedIn && !state.open ? logoutFlow() : openLogin(); }
   }));
+  pushSubscription().then((sub) => { if ($('#pushState')) $('#pushState').textContent = sub ? '켜짐 · 끄기' : pushSupported() ? '켜기' : '이 브라우저는 안 돼요'; });
   $('#importInput').onchange = async (e) => {
     const file = e.target.files[0];
     e.target.value = '';

@@ -1,5 +1,5 @@
 // 홈 화면 앱용 서비스 워커: 화면 파일은 늘 새로 받고(안 되면 저장본), 사진은 저장본을 먼저 씁니다. API 는 건드리지 않음.
-const CACHE = 'reference-v1';
+const CACHE = 'reference-v2';
 const SHELL = ['/', '/style.css', '/app.js', '/common.js', '/favicon.svg', '/icon-192.png'];
 
 self.addEventListener('install', (e) => {
@@ -27,4 +27,25 @@ self.addEventListener('fetch', (e) => {
     if (r.ok) caches.open(CACHE).then((c) => c.put(req, r.clone()));
     return r;
   }).catch(async () => (await caches.match(req)) || (await caches.match('/'))));
+});
+
+// 휴대폰 알림: 서버는 빈 알림만 보내고, 내용은 여기서 /api/push/latest 를 읽어 띄웁니다.
+self.addEventListener('push', (e) => {
+  e.waitUntil((async () => {
+    let msg = { title: '레퍼런스', body: '새 소식이 있어요' };
+    try { msg = await (await fetch('/api/push/latest', { cache: 'no-store' })).json(); } catch { /* 기본 문구 */ }
+    await self.registration.showNotification(msg.title || '레퍼런스', {
+      body: msg.body || '', icon: '/icon-192.png', badge: '/icon-192.png', tag: 'reference-jobs', data: { url: '/' },
+    });
+  })());
+});
+
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  e.waitUntil((async () => {
+    const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const open = all.find((c) => new URL(c.url).origin === location.origin);
+    if (open) { await open.focus(); return; }
+    await self.clients.openWindow(e.notification.data?.url || '/');
+  })());
 });

@@ -30,6 +30,10 @@
  *   POST   /api/artists/:name/ai          로그인. 구글 Gemini 로 작가 설명 + 대표작 2점(그림 파일) 만들기
  *   PUT    /api/artists/:name/works       로그인. 대표작 고치기 (사진 바꾸기 등)
  *   POST   /api/jobs/run                  로그인. AI 대기 목록에서 때가 된 일 한 건 처리 (GitHub Actions 가 1시간마다)
+ *   GET    /api/push/key                  공개. 휴대폰 알림용 공개 키 (VAPID)
+ *   POST   /api/push/subscribe · unsubscribe  로그인. 이 휴대폰에서 알림 받기 / 끄기
+ *   POST   /api/push/test                 로그인. 시험 알림 보내기
+ *   GET    /api/push/latest               공개. 마지막 알림 내용 (알림이 오면 휴대폰이 읽어 감)
  *   GET    /api/jobs                      공개. 대기 중인 AI 일 (몇 개, 언제 다시)
  *   POST   /api/artists/auto              로그인. 소개·대표작이 비어 있는 작가 한 명 채우기 (매일 GitHub Actions 가 부름)
  *   GET    /api/boards                    로그인. 작업 계획 보드 목록 (관리 화면)
@@ -148,6 +152,17 @@ async function route(request, env, parts, ctx) {
   }
 
   if (head === 'stats' && !id) return m === 'GET' ? getStats(env) : methodNotAllowed();
+  if (head === 'push') {
+    if (id === 'key' && m === 'GET') return json({ key: (await vapidKeys(env)).publicKey });
+    if (id === 'latest' && m === 'GET') return json((await pushMeta(env, 'latest')) || { title: '레퍼런스', body: '새 소식이 있어요' });
+    if (m !== 'POST') return methodNotAllowed();
+    const denied = await requireLogin(request, env);
+    if (denied) return denied;
+    if (id === 'subscribe') return pushSubscribe(request, env);
+    if (id === 'unsubscribe') return pushUnsubscribe(request, env);
+    if (id === 'test') return json(await notify(env, '레퍼런스 알림 시험', '이 알림이 보이면 휴대폰 알림이 잘 켜진 거예요.'));
+    return notFound();
+  }
   if (head === 'jobs') {
     if (id === 'run' && !sub) return m === 'POST' ? (await requireLogin(request, env)) || runJobs(env) : methodNotAllowed();
     if (!id) return m === 'GET' ? json({ jobs: await jobSummary(env) }) : methodNotAllowed();
@@ -267,6 +282,9 @@ async function ensureSchema(env) {
     status TEXT NOT NULL DEFAULT 'wait', tries INTEGER NOT NULL DEFAULT 0, run_at INTEGER NOT NULL DEFAULT 0,
     last_error TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
   )`).run();
+  // 휴대폰 알림: 받는 기기 목록과 알림 열쇠·마지막 알림. (백업 파일에는 넣지 않음 — 열쇠가 들어 있어서)
+  await env.DB.prepare('CREATE TABLE IF NOT EXISTS push_subs (endpoint TEXT PRIMARY KEY, data TEXT NOT NULL, created_at INTEGER NOT NULL)').run();
+  await env.DB.prepare('CREATE TABLE IF NOT EXISTS push_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)').run();
   // 2026-10 작가 대표작 2점 [{ title, titleKo, year, note, image(사진 키), imageFrom, page }]
   // 비어 있으면(NULL) 아직 한 번도 찾아보지 않은 작가 → 자동 채우기 대상
   await env.DB.prepare('ALTER TABLE artists ADD COLUMN works TEXT').run().catch(() => {});
@@ -718,8 +736,31 @@ async function runJobs(env) {
   else if (job.tries + 1 >= 3) await upd('fail', job.run_at, job.tries + 1, r.error); // 다른 실패는 3번까지
   else await upd('wait', now + 3600 * 1000, job.tries + 1, r.error);
   const body = { done: r.ok ? job.target : null, kind: job.kind, target: job.target, ok: !!r.ok, limited: !!r.limitAt, error: r.ok ? undefined : r.error, jobs: await jobSummary(env) };
+  // 끝낸 일을 모아 두었다가, 지금 할 일이 다 끝났거나 또 한도에 걸려 멈출 때 휴대폰 알림 한 번
+  if (r.ok) await addFinished(env, job);
+  if (body.jobs.due === 0 || r.limitAt) body.notified = await notifyFinished(env, body.jobs).catch(() => false);
   body.remaining = body.jobs.due; // 예전 '지금 채우기' 화면과 맞춤
   return json(body, r.limitAt ? 429 : 200);
+}
+
+const JOB_LABEL = { artist: '작가 소개', venue: '전시관 정보', analyze: '항목 빈칸' };
+
+async function addFinished(env, job) {
+  const list = (await pushMeta(env, 'finished')) || [];
+  let name = job.target;
+  if (job.kind === 'analyze') name = (await env.DB.prepare('SELECT title FROM items WHERE id = ?').bind(job.target).first())?.title || '항목';
+  list.push(`${JOB_LABEL[job.kind] || 'AI 일'} ${name}`);
+  await setPushMeta(env, 'finished', list.slice(-30));
+}
+
+async function notifyFinished(env, jobs) {
+  const list = (await pushMeta(env, 'finished')) || [];
+  if (!list.length) return false;
+  await setPushMeta(env, 'finished', []);
+  const more = jobs.waiting ? ` (남은 일 ${jobs.waiting}개는 ${whenText(jobs.nextAt)}에 이어서)` : '';
+  const body = `${list.slice(0, 4).join(' · ')}${list.length > 4 ? ` 외 ${list.length - 4}개` : ''}${more}`;
+  const r = await notify(env, `기다리던 AI 일 ${list.length}개를 끝냈어요`, body);
+  return r.sent > 0;
 }
 
 async function runJob(env, job) {
@@ -1674,3 +1715,70 @@ function safeParse(s, fallback) {
 
 const notFound = () => json({ error: '찾을 수 없습니다.' }, 404);
 const methodNotAllowed = () => json({ error: '허용되지 않는 요청입니다.' }, 405);
+
+/* ─────────────── 휴대폰 알림 (웹 푸시) ─────────────── */
+// 알림 내용은 서버에 적어 두고 '빈 알림'만 보냅니다 → 휴대폰의 서비스 워커가 /api/push/latest 를 읽어 띄움.
+// (내용을 암호화해서 실어 보내지 않아도 되어 간단하고, VAPID 서명만 필요)
+
+async function pushMeta(env, key) {
+  const r = await env.DB.prepare('SELECT value FROM push_meta WHERE key = ?').bind(key).first();
+  return r ? safeParse(r.value, null) : null;
+}
+async function setPushMeta(env, key, value) {
+  await env.DB.prepare('INSERT INTO push_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').bind(key, JSON.stringify(value)).run();
+}
+
+// 처음 한 번 열쇠 한 쌍(P-256)을 만들어 DB 에 둡니다. 공개 키는 휴대폰에, 비밀 키는 서명에.
+async function vapidKeys(env) {
+  const saved = await pushMeta(env, 'vapid');
+  if (saved?.publicKey && saved?.privateJwk) return saved;
+  const pair = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
+  const raw = await crypto.subtle.exportKey('raw', pair.publicKey); // 65바이트 (04|x|y)
+  const keys = { publicKey: b64url(raw), privateJwk: await crypto.subtle.exportKey('jwk', pair.privateKey) };
+  await env.DB.prepare('INSERT OR IGNORE INTO push_meta (key, value) VALUES (?, ?)').bind('vapid', JSON.stringify(keys)).run();
+  return (await pushMeta(env, 'vapid')) || keys; // 동시에 만들어졌으면 먼저 저장된 것
+}
+
+async function vapidAuth(env, endpoint) {
+  const keys = await vapidKeys(env);
+  const key = await crypto.subtle.importKey('jwk', keys.privateJwk, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
+  const enc = (o) => b64url(encoder.encode(JSON.stringify(o)));
+  const head = `${enc({ typ: 'JWT', alg: 'ES256' })}.${enc({ aud: new URL(endpoint).origin, exp: Math.floor(Date.now() / 1000) + 12 * 3600, sub: 'https://zeminism-archive.pages.dev' })}`;
+  const sig = await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, key, encoder.encode(head));
+  return `vapid t=${head}.${b64url(sig)}, k=${keys.publicKey}`;
+}
+
+const PUSH_HOSTS = /^https:\/\/([a-z0-9-]+\.)*(googleapis\.com|push\.apple\.com|mozilla\.com|mozaws\.net|notify\.windows\.com|push\.services\.mozilla\.com)\//i;
+
+async function pushSubscribe(request, env) {
+  const body = await readJson(request);
+  const endpoint = String(body?.endpoint || '');
+  if (!PUSH_HOSTS.test(endpoint)) return json({ error: '알림 주소가 올바르지 않아요.' }, 400);
+  await env.DB.prepare('INSERT INTO push_subs (endpoint, data, created_at) VALUES (?, ?, ?) ON CONFLICT(endpoint) DO UPDATE SET data = excluded.data')
+    .bind(endpoint, JSON.stringify({ endpoint, ua: String(body.ua || '').slice(0, 120) }), Date.now()).run();
+  const n = await env.DB.prepare('SELECT COUNT(*) AS n FROM push_subs').first();
+  return json({ ok: true, devices: n?.n || 0 });
+}
+
+async function pushUnsubscribe(request, env) {
+  const body = await readJson(request);
+  await env.DB.prepare('DELETE FROM push_subs WHERE endpoint = ?').bind(String(body?.endpoint || '')).run();
+  return json({ ok: true });
+}
+
+// 알림 보내기: 내용을 적어 두고, 받는 기기마다 빈 알림을 보냅니다. 없어진 기기(404·410)는 목록에서 뺍니다.
+async function notify(env, title, body) {
+  await setPushMeta(env, 'latest', { title, body, at: Date.now() });
+  const { results } = await env.DB.prepare('SELECT endpoint FROM push_subs').all();
+  let sent = 0;
+  const errors = [];
+  for (const { endpoint } of results) {
+    try {
+      const res = await fetch(endpoint, { method: 'POST', headers: { TTL: '86400', Urgency: 'normal', 'Content-Length': '0', Authorization: await vapidAuth(env, endpoint) } });
+      if (res.ok) sent++;
+      else if (res.status === 404 || res.status === 410) await env.DB.prepare('DELETE FROM push_subs WHERE endpoint = ?').bind(endpoint).run();
+      else errors.push(`${res.status} ${(await res.text()).slice(0, 120)}`);
+    } catch (e) { errors.push(String(e?.message || e)); }
+  }
+  return { sent, devices: results.length, errors };
+}

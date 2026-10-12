@@ -715,8 +715,43 @@ function eraseAt(p) {
   return false;
 }
 
+/* ─────────────── 애플 펜슬 모드 (손바닥 무시) ─────────────── */
+// 펜슬을 한 번 쓰면 켜집니다: 그리기·선택은 펜슬로만, 손가락은 화면 옮기기(한 손가락)·확대(두 손가락).
+// 펜슬이 닿아 있는 동안(그리고 뗀 뒤 잠깐)은 손바닥 터치를 모두 무시하고, 도구 단추도 손바닥으로는 안 눌리게 합니다.
+let penMode = (() => { try { return localStorage.getItem('ref:penMode') === '1'; } catch { return false; } })();
+let penDownId = null;
+let lastPenAt = 0;
+const penBusy = () => penDownId !== null || Date.now() - lastPenAt < 800;
+function setPenMode(on) {
+  penMode = on;
+  try { localStorage.setItem('ref:penMode', on ? '1' : '0'); } catch { /* 저장 못 해도 이번만 */ }
+}
+
+// 손바닥이 도구 단추·패널을 누르는 것 막기 (펜슬을 쓰는 중이면 손가락 탭을 버림)
+let touchDownAt = 0;
+document.addEventListener('pointerdown', (e) => {
+  if (e.pointerType === 'pen') lastPenAt = Date.now();
+  if (e.pointerType === 'touch') touchDownAt = Date.now();
+}, true);
+document.addEventListener('pointermove', (e) => { if (e.pointerType === 'pen' && e.pressure > 0) lastPenAt = Date.now(); }, true);
+document.addEventListener('click', (e) => {
+  if (!penMode || stage.contains(e.target)) return;
+  const byTouch = e.pointerType ? e.pointerType === 'touch' : Date.now() - touchDownAt < 1500;
+  // 손가락이 닿은 뒤로 펜슬을 썼거나 펜슬이 아직 닿아 있으면 손바닥으로 봅니다.
+  if (byTouch && (penDownId !== null || lastPenAt >= touchDownAt - 300)) { e.preventDefault(); e.stopImmediatePropagation(); }
+}, true);
+
 stage.addEventListener('pointerdown', (e) => {
   if (!ed.board) return;
+  if (e.pointerType === 'pen') {
+    if (!penMode) { setPenMode(true); toast('펜슬 모드를 켰어요: 펜슬로만 그리고, 손가락은 화면 옮기기·확대예요 (더보기에서 끌 수 있어요)'); }
+    penDownId = e.pointerId;
+    // 손가락(손바닥)으로 하던 옮기기·확대는 그만두고 펜슬만 봅니다.
+    if (gesture && (gesture.kind === 'pan' || gesture.kind === 'pinch')) gesture = null;
+    for (const id of [...pointers.keys()]) if (id !== e.pointerId) pointers.delete(id);
+  } else if (penMode && e.pointerType === 'touch' && penBusy()) {
+    return; // 펜슬로 그리는 중에 닿은 손바닥
+  }
   stage.setPointerCapture(e.pointerId);
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
@@ -731,7 +766,7 @@ stage.addEventListener('pointerdown', (e) => {
 
   const p = toBoard(e);
   const hit = hitItem(e);
-  const tool = e.button === 1 ? 'pan' : ed.tool;
+  const tool = e.button === 1 || (penMode && e.pointerType === 'touch') ? 'pan' : ed.tool;
 
   if (tool === 'pan') {
     gesture = { kind: 'pan', last: { x: e.clientX, y: e.clientY } };
@@ -852,6 +887,7 @@ stage.addEventListener('pointermove', (e) => {
 });
 
 function endPointer(e) {
+  if (e.pointerId === penDownId) { penDownId = null; lastPenAt = Date.now(); }
   if (!pointers.has(e.pointerId)) return;
   pointers.delete(e.pointerId);
   if (!gesture) return;
@@ -981,6 +1017,7 @@ function moreMenu() {
       <li><button data-a="bg">${d.bg ? '배경 도면·사진 바꾸기' : '배경에 도면·사진 넣기'}</button></li>
       ${d.bg ? `<li><button data-a="fade">${d.bgOpacity < 1 ? '배경 진하게' : '배경 흐리게'}</button></li><li><button data-a="nobg">배경 빼기</button></li>` : ''}
       <li><button data-a="grid">${d.grid ? '격자 숨기기' : '격자 보이기'}</button></li>
+      <li><button data-a="pen">애플 펜슬 모드 <span class="n">${penMode ? '켜짐 · 끄기' : '꺼짐 · 켜기'}</span></button></li>
       <li><button data-a="png">그림으로 저장 (PNG)</button></li>
       <li><button data-a="del" style="color:var(--red)">이 계획 지우기</button></li>
     </ul>`);
@@ -992,6 +1029,7 @@ function moreMenu() {
     if (a === 'nobg') { d.bg = null; renderBackground(); scheduleSave(); }
     if (a === 'grid') { d.grid = !d.grid; renderBackground(); scheduleSave(); }
     if (a === 'png') exportPng();
+    if (a === 'pen') { setPenMode(!penMode); toast(penMode ? '펜슬 모드: 펜슬로만 그리고 손가락은 화면 옮기기·확대예요' : '펜슬 모드를 껐어요: 손가락으로도 그려요'); }
     if (a === 'del') confirmDeleteBoard();
   }));
 }

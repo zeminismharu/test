@@ -166,3 +166,8 @@ input[type=range]::-moz-range-thumb { width: 24px; height: 24px; border-radius: 
 
 /* 아이콘용 전역 svg 규칙(선 굵기·색)이 도화지 안까지 번지지 않도록 기본값으로 돌립니다. */
 .stage svg#board { fill: #000; stroke: none; stroke-width: 1; stroke-linecap: butt; stroke-linejoin: miter; width: 100%; height: 100%; }
+
+/* 아이패드: 펜슬을 오래 누를 때 글자 선택·확대경·메뉴가 뜨지 않게, 단추를 두 번 눌러도 확대되지 않게 */
+.editor, .editor * { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+.editor input, .editor textarea { -webkit-user-select: text; user-select: text; }
+.toolbar, .pen-opts, .ed-top { touch-action: manipulation; }
