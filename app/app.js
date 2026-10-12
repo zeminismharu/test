@@ -196,11 +196,101 @@ function filtered() {
 
 /* ─────────────── 첫 화면 게임 카드: 전시 레벨 · AI 에너지 ─────────────── */
 
-// [이만큼 다녀오면, 칭호]. 마지막 칭호 뒤로는 20번마다 ★ 레벨이 오릅니다.
+// [이만큼 다녀오면, 화분 모습]. 전시를 다녀올수록 식물이 자랍니다. 마지막 모습 뒤로는 20번마다 ★ 레벨이 오릅니다.
 const LEVELS = [
-  [0, '전시 새싹'], [1, '첫 관람객'], [3, '산책하는 관람객'], [6, '전시 탐험가'], [10, '단골 관람객'],
-  [15, '작품 수집가'], [22, '큐레이터 견습생'], [30, '갤러리 마스터'], [45, '아트 순례자'], [60, '전설의 관람객'],
+  [0, '씨앗'], [1, '새싹'], [3, '떡잎'], [6, '어린 줄기'], [10, '잎이 무성한 풀'],
+  [15, '꽃봉오리'], [22, '첫 꽃'], [30, '활짝 핀 꽃'], [45, '열매 맺은 꽃'], [60, '큰 나무'],
 ];
+
+/* ─────────────── 다마고치 화분 (픽셀 그림) ─────────────── */
+
+// 기분: 마지막 전시가 며칠 전인지로 정합니다. 오늘 물을 주면 한 단계 나아집니다.
+const MOODS = ['wilt', 'thirsty', 'ok', 'happy'];
+function plantMood(lastAt, watered) {
+  if (!lastAt) return { mood: 'ok', days: null };
+  const days = Math.max(0, Math.floor((Date.now() - lastAt) / 864e5));
+  let m = days <= 7 ? 3 : days <= 21 ? 2 : days <= 45 ? 1 : 0;
+  if (watered && m < 3) m += 1;
+  return { mood: MOODS[m], days };
+}
+
+const PLANT_COLORS = {
+  happy: ['#2FB35A', '#1F8A44'], ok: ['#5DB847', '#3F8F35'],
+  thirsty: ['#B9B13C', '#8E8A2E'], wilt: ['#A88457', '#7A5E3A'],
+};
+
+// stage 0~9, mood happy/ok/thirsty/wilt, kind leaf(전시) / sun(영화 해바라기)
+function plantSVG(stage, mood = 'ok', kind = 'leaf') {
+  const out = [];
+  const px = (x, y, c, w = 1, h = 1) => out.push(`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${c}"/>`);
+  const [leaf, stem] = PLANT_COLORS[mood] || PLANT_COLORS.ok;
+  const sad = mood === 'thirsty' || mood === 'wilt';
+  const dy = sad ? 1 : -1;
+  const petal = mood === 'wilt' ? '#D9B8A0' : kind === 'sun' ? '#FFB21E' : '#F27BA0';
+  const petal2 = mood === 'wilt' ? '#E6CDBB' : kind === 'sun' ? '#FFD426' : '#F9A8C4';
+  const core = kind === 'sun' ? '#7A4A1E' : '#FFD426';
+
+  const top = [];
+  const tp = (...a) => { const before = out.length; px(...a); top.push(out.pop()); out.length = before; };
+  const leafAt = (y, big) => {
+    tp(9, y, leaf, 2, 1); tp(13, y, leaf, 2, 1);
+    if (big) { tp(8, y + dy, leaf); tp(15, y + dy, leaf); }
+  };
+  const H = [0, 2, 3, 5, 7, 8, 9, 10, 10, 0][stage] || 0;
+  const t = 16 - H; // 줄기 꼭대기 y
+  if (stage === 0) {
+    tp(11, 15, '#8B5A2B', 2, 1); tp(12, 14, '#A0703C');
+  } else if (stage < 9) {
+    tp(11, t, stem, 2, H);
+    if (stage <= 4) leafAt(t, stage >= 2);
+    for (let k = 0; k < Math.min(3, stage - 2); k++) leafAt(14 - k * 2 - (stage > 4 ? 0 : 1), true);
+    if (stage === 5) { tp(11, t - 2, petal, 2, 2); tp(10, t, leaf); tp(13, t, leaf); }
+    if (stage >= 6) {
+      const c = t - 3;
+      tp(11, c - 2, petal, 2, 2); tp(11, c + 2, petal, 2, 2); tp(9, c, petal, 2, 2); tp(13, c, petal, 2, 2);
+      if (stage >= 7) { tp(9, c - 2, petal2, 2, 2); tp(13, c - 2, petal2, 2, 2); tp(9, c + 2, petal2, 2, 2); tp(13, c + 2, petal2, 2, 2); }
+      tp(11, c, core, 2, 2);
+    }
+    if (stage === 8) { tp(6, 13, '#F04452', 2, 2); tp(16, 11, '#F04452', 2, 2); tp(6, 12, stem); tp(17, 10, stem); }
+  } else {
+    tp(11, 9, '#8B5A2B', 2, 7); tp(9, 11, '#8B5A2B', 2, 1); tp(13, 10, '#8B5A2B', 2, 1);
+    for (let y = 0; y <= 11; y++) for (let x = 4; x <= 19; x++) {
+      const d = (x - 11.5) ** 2 + ((y - 5.5) * 1.15) ** 2;
+      if (d <= 40) tp(x, y, d > 28 && (x + y) % 3 === 0 ? stem : leaf);
+    }
+    if (!sad) { tp(8, 4, '#F04452'); tp(15, 3, '#F04452'); tp(12, 8, '#F04452'); tp(17, 7, '#F04452'); }
+  }
+
+  // 화분 + 얼굴
+  px(6, 16, '#6B4A33', 12, 1);
+  px(5, 17, '#E07A4F', 14, 1);
+  px(6, 18, '#F0936A', 12, 5);
+  px(7, 23, '#D06A40', 10, 1);
+  const ink = '#191F28';
+  if (mood === 'wilt') { px(8, 19, ink, 2, 1); px(14, 19, ink, 2, 1); }
+  else { px(9, 19, ink); px(14, 19, ink); }
+  if (mood === 'happy') { px(10, 20, ink); px(13, 20, ink); px(11, 21, ink, 2, 1); px(8, 20, '#F9A8C4'); px(15, 20, '#F9A8C4'); }
+  else if (mood === 'ok') { px(11, 21, ink, 2, 1); }
+  else { px(11, 20, ink, 2, 1); px(10, 21, ink); px(13, 21, ink); }
+
+  // 머리 위 표시: 하트 / 물방울 / ...
+  const icon = [];
+  if (mood === 'happy') icon.push('<path d="M18 1h2v1h1V1h2v2h-1v1h-1v1h-1V4h-1V3h-1z" fill="#F04452"/>');
+  if (mood === 'thirsty') icon.push('<rect x="20" y="1" width="1" height="1" fill="#3182F6"/><rect x="19" y="2" width="3" height="2" fill="#3182F6"/>');
+  if (mood === 'wilt') icon.push('<rect x="18" y="3" width="1" height="1" fill="#8B95A1"/><rect x="20" y="3" width="1" height="1" fill="#8B95A1"/><rect x="22" y="3" width="1" height="1" fill="#8B95A1"/>');
+
+  return `<svg class="pixel-plant ${mood}" viewBox="0 0 24 24" shape-rendering="crispEdges" aria-hidden="true">
+    <g class="pl-top">${top.join('')}</g>${out.join('')}<g class="pl-icon">${icon.join('')}</g>
+    <g class="pl-drops"><rect x="9" y="2" width="1" height="2" fill="#3182F6"/><rect x="13" y="0" width="1" height="2" fill="#3182F6"/><rect x="16" y="3" width="1" height="2" fill="#3182F6"/></g>
+  </svg>`;
+}
+
+// 물 주기 기록 (이 기기에만 저장)
+function waterState() {
+  try { return JSON.parse(localGet('water') || 'null') || { last: '', streak: 0 }; } catch { return { last: '', streak: 0 }; }
+}
+const todayYmd = () => ymd(Date.now());
+const wateredToday = () => waterState().last === todayYmd();
 
 function levelOf(n) {
   let i = 0;
@@ -281,23 +371,60 @@ function renderHero() {
       : `오늘 ${num(ai.today.requests)}번${isClaude ? '' : ` · ${num(ai.today.tokens)}토큰`} 썼어요` +
         (en == null ? ' · 눌러서 하루 한도 정하기' : ` · 하루 한도 ${ai.limit.tokens ? `${num(ai.limit.tokens)}토큰` : `${num(ai.limit.requests)}번`}`);
 
+  const stage = Math.min(L.lv - 1, LEVELS.length - 1);
+  const watered = wateredToday();
+  const { mood, days } = plantMood(ex[0]?.at, watered);
+  const W = waterState();
+  const say = !visits
+    ? '전시를 한 번 다녀오면 싹이 터요'
+    : mood === 'happy' ? (days === 0 ? '오늘 전시 덕분에 쑥쑥 자랐어요!' : `${days}일 전에 전시를 봤어요. 기분 최고!`)
+      : mood === 'ok' ? `마지막 전시가 ${days}일 전이에요. 슬슬 보러 갈까요?`
+        : mood === 'thirsty' ? `${days}일째 전시를 못 봤어요… 목말라요`
+          : `${days}일째… 시들고 있어요. 전시 한 번이면 살아나요!`;
+
   box.innerHTML = `
     <div class="hero-top">
-      <div class="lv-badge"><small>Lv.</small>${L.lv}</div>
-      <div class="hero-title"><span>전시 레벨</span><strong>${esc(L.title)}</strong></div>
-      <button class="hero-visits" id="visitsBtn" type="button"><b>${state.loaded ? visits : '-'}</b><small>번 다녀옴 ›</small></button>
+      <button class="tama" id="tama" type="button" aria-label="화분이랑 놀기"><span class="tama-screen">${plantSVG(stage, mood)}</span></button>
+      <div class="hero-title">
+        <span>내 전시 화분 · Lv.${L.lv}</span>
+        <strong>${esc(L.title)}</strong>
+        <p class="tama-say" id="tamaSay">${esc(say)}</p>
+      </div>
     </div>
-    <div class="bar xp" role="progressbar" aria-label="다음 레벨까지" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><i style="width:${pct}%"></i></div>
-    <p class="bar-caption">다음 레벨 <b>${esc(L.nextTitle)}</b>까지 전시 ${L.to - visits}번</p>
+    <div class="tama-actions">
+      <button type="button" id="waterBtn" class="${watered ? 'done' : ''}"><span class="ta-ic">💧</span>${watered ? `물 줬어요${W.streak > 1 ? ` · ${W.streak}일째` : ''}` : '물 주기'}</button>
+      <button type="button" id="playBtn"><span class="ta-ic">✋</span>쓰다듬기</button>
+      <button type="button" id="visitsBtn"><span class="ta-ic">🖼️</span><span><b>${state.loaded ? visits : '-'}</b>번 다녀옴</span></button>
+    </div>
+    <div class="bar xp" role="progressbar" aria-label="다음 모습까지" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><i style="width:${pct}%"></i></div>
+    <p class="bar-caption">다음 모습 <b>${esc(L.nextTitle)}</b>까지 전시 ${L.to - visits}번 · 전시를 다녀와야 자라요</p>
     <div class="hero-chips">
       ${state.todo.length ? `<button type="button" class="quest-chip" id="questChip">${ICON.pin}가볼 곳 <b>${todoProgress().done}/${state.todo.length}</b></button>` : ''}
-      <span>이번 달 전시 <b>${monthVisits}</b></span><button type="button" class="hero-chip-btn" id="movieChip">${new Date().getFullYear()}년 영화 <b>${moviesByYear().get(new Date().getFullYear())?.size || 0}편</b> · ${movieLevel(moviesByYear().get(new Date().getFullYear())?.size || 0).title}</button><span>작가 <b>${state.artists.length}</b></span>
+      <span>이번 달 전시 <b>${monthVisits}</b></span><button type="button" class="hero-chip-btn" id="movieChip">🌻 ${new Date().getFullYear()}년 영화 <b>${moviesByYear().get(new Date().getFullYear())?.size || 0}편</b> · ${movieLevel(moviesByYear().get(new Date().getFullYear())?.size || 0).title}</button><span>작가 <b>${state.artists.length}</b></span>
     </div>
     <button class="energy" id="energyBtn" type="button">
       <span class="energy-head"><span class="energy-label">${ICON.spark}AI 에너지${isClaude ? ' (Claude)' : ''}</span><b>${enPct == null ? '한도 미정' : `${enPct}%`}</b></span>
       <span class="bar energy-bar ${enLevel}"><i style="width:${enPct == null ? 100 : enPct}%"></i></span>
       <span class="bar-caption">${esc(aiCaption)}</span>
     </button>`;
+  const sayIt = (t) => { const el = $('#tamaSay'); if (el) el.textContent = t; };
+  const bounce = (cls) => { const el = $('#tama'); el.classList.remove('jump', 'drink'); void el.offsetWidth; el.classList.add(cls); };
+  $('#waterBtn').onclick = () => {
+    if (wateredToday()) { bounce('jump'); return sayIt('오늘은 벌써 물 마셨어요. 내일 또 주세요!'); }
+    const w = waterState();
+    const yest = ymd(Date.now() - 864e5);
+    const next = { last: todayYmd(), streak: w.last === yest ? w.streak + 1 : 1 };
+    localSet('water', JSON.stringify(next));
+    renderHero();
+    bounce('drink');
+    sayIt(next.streak > 1 ? `꿀꺽꿀꺽! ${next.streak}일 연속 물 고마워요` : '꿀꺽꿀꺽! 물 고마워요');
+  };
+  const PLAY = !visits
+    ? ['간지러워요! 얼른 싹 틔우고 싶어요', '전시 보러 가면 저도 데려가 주세요']
+    : mood === 'happy' || mood === 'ok'
+      ? ['헤헤, 간지러워요!', '다음엔 어떤 전시 보러 가요?', '사진 많이 찍어 와요!', `가볼 곳이 ${Math.max(0, state.todo.length - todoProgress().done)}곳 남았어요`, '빛이 좋은 전시가 보고 싶어요']
+      : ['기운이 없어요…', '전시 보러 가면 다시 힘이 날 것 같아요', '가볼 곳 목록 한번 볼까요?'];
+  $('#playBtn').onclick = $('#tama').onclick = () => { bounce('jump'); sayIt(PLAY[Math.floor(Math.random() * PLAY.length)]); };
   $('#energyBtn').onclick = openEnergy;
   $('#visitsBtn').onclick = openVisits;
   $('#movieChip').onclick = openMovies;
@@ -307,7 +434,7 @@ function renderHero() {
   if (state.loaded) {
     const seen = Number(localGet('lv') || 0);
     if (seen && L.lv > seen) {
-      toast(`레벨 업! Lv.${L.lv} ${L.title}`);
+      toast(`쑥쑥 자랐어요! 이제 "${L.title}" (Lv.${L.lv})`);
       box.classList.remove('levelup'); void box.offsetWidth; box.classList.add('levelup');
     }
     localSet('lv', String(L.lv));
@@ -409,8 +536,8 @@ function openMovies() {
   openSheet(`
     <h2>연도별 영화 기록</h2>
     <div class="movie-hero">
-      <div class="lv-badge movie"><small>Lv.</small>${L.lv}</div>
-      <div class="hero-title"><span>${now}년 영화 칭호</span><strong>${L.title}</strong></div>
+      <span class="tama small"><span class="tama-screen">${plantSVG([0, 1, 3, 5, 6, 7, 8][L.lv] ?? 8, thisYear ? 'happy' : 'ok', 'sun')}</span></span>
+      <div class="hero-title"><span>${now}년 영화 해바라기 · Lv.${L.lv}</span><strong>${L.title}</strong></div>
       <div class="hero-visits"><b>${thisYear}</b><small>편</small></div>
     </div>
     ${L.next ? `<span class="bar movie-bar"><i style="width:${Math.round(((thisYear - L.from) / (L.next.at - L.from)) * 100)}%"></i></span>
