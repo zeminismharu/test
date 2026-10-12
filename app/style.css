@@ -667,3 +667,10 @@ textarea.field { min-height: 120px; line-height: 1.6; }
 .ak-name { font-size: 12px; font-weight: 700; max-width: 66px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ak-n { position: absolute; top: 2px; right: 4px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--text); color: var(--bg); font-size: 11px; font-weight: 800; line-height: 18px; text-align: center; }
 .artist-key.more .ak-face { background: var(--bg-2); color: var(--text-2); font-size: 26px; }
+
+/* ── AI 대기 목록 ── */
+.jobs-line { color: var(--hero-fg); }
+.job-list { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.job-list li { display: flex; justify-content: space-between; gap: 10px; padding: 12px 14px; border-radius: 14px; background: var(--bg-2); font-size: 14px; }
+.job-list li span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.job-list small { flex: none; color: var(--text-2); font-size: 12px; }

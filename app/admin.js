@@ -635,7 +635,6 @@ function upp() {
 function applyView() {
   const v = ed.view;
   svg.setAttribute('viewBox', `${v.x} ${v.y} ${v.w} ${v.h}`);
-  $('#zoomFit').textContent = `${Math.round((W / v.w) * 100)}%`;
   if (ed.board) renderLights();
   renderSelection();
 }
@@ -913,9 +912,6 @@ function bindEditor() {
   document.querySelectorAll('.tool[data-tool]').forEach((b) => (b.onclick = () => setTool(b.dataset.tool)));
   $('#undoBtn').onclick = doUndo;
   $('#redoBtn').onclick = doRedo;
-  $('#zoomIn').onclick = () => zoomAt(1.25, ed.view.x + ed.view.w / 2, ed.view.y + ed.view.h / 2);
-  $('#zoomOut').onclick = () => zoomAt(0.8, ed.view.x + ed.view.w / 2, ed.view.y + ed.view.h / 2);
-  $('#zoomFit').onclick = fitView;
   $('#edBack').onclick = () => { location.hash = ''; };
   $('#panelToggle').onclick = () => openPanel(!$('#panel').classList.contains('open'));
   $('#panelGrip').onclick = () => openPanel(false);

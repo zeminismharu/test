@@ -29,6 +29,8 @@
  *   PUT    /api/artists/:name             로그인. 작가 설명 직접 고치기
  *   POST   /api/artists/:name/ai          로그인. 구글 Gemini 로 작가 설명 + 대표작 2점(그림 파일) 만들기
  *   PUT    /api/artists/:name/works       로그인. 대표작 고치기 (사진 바꾸기 등)
+ *   POST   /api/jobs/run                  로그인. AI 대기 목록에서 때가 된 일 한 건 처리 (GitHub Actions 가 1시간마다)
+ *   GET    /api/jobs                      공개. 대기 중인 AI 일 (몇 개, 언제 다시)
  *   POST   /api/artists/auto              로그인. 소개·대표작이 비어 있는 작가 한 명 채우기 (매일 GitHub Actions 가 부름)
  *   GET    /api/boards                    로그인. 작업 계획 보드 목록 (관리 화면)
  *   POST   /api/boards                    로그인. 새 보드
@@ -146,6 +148,11 @@ async function route(request, env, parts, ctx) {
   }
 
   if (head === 'stats' && !id) return m === 'GET' ? getStats(env) : methodNotAllowed();
+  if (head === 'jobs') {
+    if (id === 'run' && !sub) return m === 'POST' ? (await requireLogin(request, env)) || runJobs(env) : methodNotAllowed();
+    if (!id) return m === 'GET' ? json({ jobs: await jobSummary(env) }) : methodNotAllowed();
+    return notFound();
+  }
   if (head === 'water' && !id) {
     return m === 'POST' ? (await requireLogin(request, env)) || waterPlant(env) : methodNotAllowed();
   }
@@ -255,6 +262,11 @@ async function ensureSchema(env) {
   await env.DB.prepare("ALTER TABLE items ADD COLUMN place TEXT NOT NULL DEFAULT ''").run().catch(() => {});
   // 2026-10 관람일 (사진 찍은 날). 0 이면 모름 → 화면에서 작성일을 씀
   await env.DB.prepare('ALTER TABLE items ADD COLUMN visited_at INTEGER NOT NULL DEFAULT 0').run().catch(() => {});
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS ai_jobs (
+    key TEXT PRIMARY KEY, kind TEXT NOT NULL, target TEXT NOT NULL, payload TEXT NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL DEFAULT 'wait', tries INTEGER NOT NULL DEFAULT 0, run_at INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+  )`).run();
   // 2026-10 작가 대표작 2점 [{ title, titleKo, year, note, image(사진 키), imageFrom, page }]
   // 비어 있으면(NULL) 아직 한 번도 찾아보지 않은 작가 → 자동 채우기 대상
   await env.DB.prepare('ALTER TABLE artists ADD COLUMN works TEXT').run().catch(() => {});
@@ -324,7 +336,16 @@ async function createItem(request, env, ctx) {
   ).bind(id, it.title, it.artist, it.category, it.place, it.visitedAt, it.memo, JSON.stringify(it.tags), it.source, JSON.stringify(it.images), now, now).run();
   const row = await env.DB.prepare('SELECT * FROM items WHERE id = ?').bind(id).first();
   queueArtist(env, ctx, it.artist);
+  await queueAnalyzeLater(env, id, body, it.images);
   return json({ item: rowToItem(row) }, 201);
+}
+
+// 화면에서 AI가 한도에 걸린 채로 저장하면(aiLater = 사진 키), 나중에 빈칸을 채우도록 대기 목록에 넣습니다.
+async function queueAnalyzeLater(env, id, body, images) {
+  const key = String(body?.aiLater || '');
+  if (!key || !images.includes(key)) return;
+  const at = Number(body.aiRetryAt) > Date.now() ? Number(body.aiRetryAt) : Date.now();
+  await enqueueJob(env, 'analyze', id, { image: key, fillCategory: !!body.aiCategory }, at);
 }
 
 async function updateItem(request, env, id, ctx) {
@@ -342,6 +363,7 @@ async function updateItem(request, env, id, ctx) {
   const removed = safeParse(old.images, []).filter((k) => !it.images.includes(k));
   await Promise.all(removed.map((k) => env.IMAGES?.delete(k)));
   if (it.artist !== old.artist) queueArtist(env, ctx, it.artist);
+  await queueAnalyzeLater(env, id, body, it.images);
   const row = await env.DB.prepare('SELECT * FROM items WHERE id = ?').bind(id).first();
   return json({ item: rowToItem(row) });
 }
@@ -439,6 +461,10 @@ async function describeArtist(env, name) {
   name = String(name).trim().slice(0, LIMITS.artist);
   if (!name) return json({ error: '작가 이름이 없습니다.' }, 400);
   const r = await fillArtist(env, name);
+  if (r.error && r.limitAt) {
+    await enqueueJob(env, 'artist', name, {}, r.limitAt);
+    return json({ error: `${r.error} ${whenText(r.limitAt)}에 자동으로 다시 만들어요.`, retryAt: r.limitAt, limited: true }, 429);
+  }
   return r.error ? json({ error: r.error }, r.status || 502) : json({ artist: r.artist });
 }
 
@@ -481,6 +507,7 @@ async function fillArtist(env, name, keepManual = false) {
   ];
   let lastError = '';
   let lastStatus = 502;
+  const lim = limitTracker();
   const skip = new Set(); // 한도·붐빔에 걸린 모델은 다시 묻지 않음
   for (const a of attempts) {
     if (skip.has(a.model)) continue;
@@ -503,10 +530,11 @@ async function fillArtist(env, name, keepManual = false) {
     }
     lastError = res.error;
     lastStatus = res.status === 429 ? 429 : 502;
+    lim.see(res);
     if (switchModel(res)) { skip.add(a.model); continue; }
     if (stopRetry(res)) break;
   }
-  return { error: `AI 설명을 만들지 못했습니다. ${lastError}`.trim(), status: lastStatus };
+  return { error: `AI 설명을 만들지 못했습니다. ${lastError}`.trim(), status: lim.at ? 429 : lastStatus, limitAt: lim.at };
 }
 
 // 답의 마지막 "WORKS=[…]" 줄을 떼어 대표작 목록으로 만듭니다.
@@ -631,29 +659,111 @@ function queueArtist(env, ctx, name) {
     const r = await env.DB.prepare("INSERT OR IGNORE INTO artists (name, description, sources, by_ai, updated_at, works) VALUES (?, '', '[]', 0, ?, '[]')")
       .bind(name, Date.now()).run();
     if (!r.meta?.changes) return; // 이미 있는 작가
-    await fillArtist(env, name, true);
+    const f = await fillArtist(env, name, true);
+    if (f.error) await enqueueJob(env, 'artist', name, {}, f.limitAt || Date.now() + 3600 * 1000);
   })().catch((err) => console.error('auto artist', err)));
 }
 
-// 소개도 대표작도 없는 작가 한 명을 채웁니다. GitHub Actions 가 매일 여러 번 나눠 부릅니다 (무료 한도 지키기).
+// '지금 채우기'(작가별 탭)도 대기 목록 처리와 같습니다: 빈 작가를 목록에 넣고 한 건 처리.
 async function autoArtists(env) {
-  const { results } = await env.DB.prepare(`
-    SELECT i.artist AS name FROM items i LEFT JOIN artists a ON a.name = i.artist
-    WHERE i.artist != '' AND (a.name IS NULL OR a.works IS NULL OR a.description = ''
-      OR (a.works = '[]' AND a.updated_at < ?))
-    GROUP BY i.artist ORDER BY MIN(COALESCE(a.updated_at, 0)) ASC, COUNT(*) DESC
-  `).bind(Date.now() - 30 * 864e5).all(); // 대표작을 못 찾은 작가는 30일 뒤에 다시
-  const todo = results.map((r) => r.name);
-  if (!todo.length) return json({ done: null, remaining: 0 });
+  return runJobs(env);
+}
+
+/* ─────────────── AI 대기 목록 (한도에 걸린 일을 나중에 자동으로) ─────────────── */
+
+// kind: artist(작가 소개·대표작) · venue(전시관 정보) · analyze(항목 빈칸을 사진으로 채우기)
+async function enqueueJob(env, kind, target, payload = {}, runAt = Date.now()) {
+  const now = Date.now();
+  await env.DB.prepare(`INSERT INTO ai_jobs (key, kind, target, payload, status, tries, run_at, last_error, created_at, updated_at)
+    VALUES (?, ?, ?, ?, 'wait', 0, ?, '', ?, ?)
+    ON CONFLICT(key) DO UPDATE SET payload = excluded.payload, status = 'wait', tries = 0,
+      run_at = CASE WHEN ai_jobs.status = 'wait' THEN MIN(ai_jobs.run_at, excluded.run_at) ELSE excluded.run_at END, updated_at = excluded.updated_at`)
+    .bind(`${kind}:${target}`, kind, String(target), JSON.stringify(payload), Math.round(runAt), now, now).run();
+}
+
+// 소개·대표작이 비어 있는 작가를 목록에 넣습니다 (이미 목록에 있었던 작가는 다시 넣지 않음).
+async function seedArtistJobs(env) {
+  const now = Date.now();
+  await env.DB.prepare(`
+    INSERT OR IGNORE INTO ai_jobs (key, kind, target, payload, status, tries, run_at, last_error, created_at, updated_at)
+    SELECT 'artist:' || i.artist, 'artist', i.artist, '{}', 'wait', 0, ?, '', ?, ?
+    FROM items i LEFT JOIN artists a ON a.name = i.artist
+    WHERE i.artist != '' AND (a.name IS NULL OR a.works IS NULL OR a.description = '')
+    GROUP BY i.artist
+  `).bind(now, now, now).run();
+}
+
+async function jobSummary(env) {
+  const now = Date.now();
+  const w = await env.DB.prepare("SELECT COUNT(*) AS n, MIN(run_at) AS next, SUM(CASE WHEN run_at <= ? THEN 1 ELSE 0 END) AS due FROM ai_jobs WHERE status = 'wait'").bind(now).first();
+  const { results } = await env.DB.prepare("SELECT kind, target, run_at, tries, last_error FROM ai_jobs WHERE status = 'wait' ORDER BY run_at ASC LIMIT 20").all();
+  return {
+    waiting: w?.n || 0, due: w?.due || 0, nextAt: w?.next || null,
+    list: results.map((r) => ({ kind: r.kind, target: r.target, runAt: r.run_at, tries: r.tries, error: r.last_error })),
+  };
+}
+
+// 때가 된 일을 한 건 처리합니다. GitHub Actions 가 1시간마다, 화면을 열 때 한 번 부릅니다.
+async function runJobs(env) {
   if (!env.GEMINI_API_KEY) return json({ error: '구글 AI 키(GEMINI_API_KEY)가 설정되지 않았습니다.' }, 503);
-  const name = todo[0];
-  const r = await fillArtist(env, name, true);
-  if (r.error) {
-    // 실패한 작가는 맨 뒤로 (다음 번에 다른 작가부터)
-    await env.DB.prepare("INSERT INTO artists (name, updated_at) VALUES (?, ?) ON CONFLICT(name) DO UPDATE SET updated_at = excluded.updated_at").bind(name, Date.now()).run();
-    return json({ error: r.error, name, remaining: todo.length }, r.status || 502);
+  await seedArtistJobs(env);
+  const now = Date.now();
+  const job = await env.DB.prepare("SELECT * FROM ai_jobs WHERE status = 'wait' AND run_at <= ? ORDER BY run_at ASC, created_at ASC LIMIT 1").bind(now).first();
+  if (!job) return json({ done: null, jobs: await jobSummary(env) });
+  const r = await runJob(env, job);
+  const upd = (status, runAt, tries, err) => env.DB.prepare('UPDATE ai_jobs SET status = ?, run_at = ?, tries = ?, last_error = ?, updated_at = ? WHERE key = ?')
+    .bind(status, Math.round(runAt), tries, String(err || '').slice(0, 300), Date.now(), job.key).run();
+  if (r.ok) await upd('done', job.run_at, job.tries, '');
+  else if (r.limitAt) await upd('wait', r.limitAt, job.tries, r.error); // 한도: 횟수는 세지 않고 풀릴 때까지 미룸
+  else if (job.tries + 1 >= 3) await upd('fail', job.run_at, job.tries + 1, r.error); // 다른 실패는 3번까지
+  else await upd('wait', now + 3600 * 1000, job.tries + 1, r.error);
+  const body = { done: r.ok ? job.target : null, kind: job.kind, target: job.target, ok: !!r.ok, limited: !!r.limitAt, error: r.ok ? undefined : r.error, jobs: await jobSummary(env) };
+  body.remaining = body.jobs.due; // 예전 '지금 채우기' 화면과 맞춤
+  return json(body, r.limitAt ? 429 : 200);
+}
+
+async function runJob(env, job) {
+  const p = safeParse(job.payload, {});
+  if (job.kind === 'artist') {
+    const f = await fillArtist(env, job.target, true);
+    return f.error ? { error: f.error, limitAt: f.limitAt } : { ok: true };
   }
-  return json({ done: name, works: r.artist.works.length, images: r.artist.works.filter((w) => w.image).length, remaining: todo.length - 1 });
+  if (job.kind === 'venue') {
+    const res = await refreshVenue(env, job.target);
+    if (res.ok) return { ok: true };
+    const d = await res.json().catch(() => ({}));
+    return { error: d.error, limitAt: d.retryAt };
+  }
+  if (job.kind === 'analyze') {
+    const row = await env.DB.prepare('SELECT * FROM items WHERE id = ?').bind(job.target).first();
+    if (!row) return { ok: true }; // 그사이 지운 항목
+    const it = rowToItem(row);
+    const key = it.images.includes(p.image) ? p.image : it.images[0];
+    if (!key) return { ok: true };
+    const r = await analyzeCore(env, key, {});
+    if (!r.suggestion) return { error: r.error, limitAt: r.limitAt };
+    const s = r.suggestion;
+    // 사장님이 적은 칸은 그대로, 빈칸만 채웁니다.
+    const next = { ...it };
+    if (!next.title && s.title) next.title = s.title.slice(0, LIMITS.title);
+    if (!next.artist && s.artist) next.artist = await canonicalArtist(env, s.artist.slice(0, LIMITS.artist), it.id);
+    if (!next.place && s.place) next.place = s.place.slice(0, LIMITS.place);
+    if (!next.memo && s.memo) next.memo = s.memo.slice(0, LIMITS.memo);
+    if (!next.tags.length && s.tags?.length) next.tags = s.tags.slice(0, LIMITS.tags);
+    if (p.fillCategory && s.category && CATEGORIES.includes(s.category)) next.category = s.category;
+    await env.DB.prepare('UPDATE items SET title = ?, artist = ?, category = ?, place = ?, memo = ?, tags = ?, updated_at = ? WHERE id = ?')
+      .bind(next.title, next.artist, next.category, next.place, next.memo, JSON.stringify(next.tags), Date.now(), it.id).run();
+    if (next.artist && next.artist !== it.artist) await seedArtistJobs(env);
+    return { ok: true };
+  }
+  return { ok: true };
+}
+
+// "10월 13일 오후 4:05" (한국 시간)
+function whenText(ms) {
+  const d = new Date(ms + 9 * 3600 * 1000);
+  const h = d.getUTCHours();
+  return `${d.getUTCMonth() + 1}월 ${d.getUTCDate()}일 ${h < 12 ? '오전' : '오후'} ${h % 12 || 12}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
 }
 
 /* ─────────────── 항목 합치기 · 사진 옮기기 ─────────────── */
@@ -867,6 +977,13 @@ async function analyzeImage(request, env) {
   const body = await readJson(request);
   const key = String(body?.image || '');
   if (!/^[a-z0-9-]{8,64}$/.test(key)) return json({ error: '사진이 없습니다.' }, 400);
+  const r = await analyzeCore(env, key, body);
+  if (r.suggestion) return json(r);
+  return r.limitAt ? json({ error: r.error, retryAt: r.limitAt, limited: true }, 429) : json({ error: r.error }, r.status || 502);
+}
+
+// 사진 한 장 분석 (화면에서 바로, 또는 대기 목록에서 나중에)
+async function analyzeCore(env, key, body = {}) {
 
   const { results } = await env.DB.prepare("SELECT artist, COUNT(*) AS n FROM items WHERE artist != '' GROUP BY artist ORDER BY n DESC").all();
   const existing = results.map((r) => r.artist);
@@ -874,7 +991,7 @@ async function analyzeImage(request, env) {
   // 한 번 분석한 사진은 다시 묻지 않습니다 ('사진으로 채우기'로 다시 누르면 새로 물음).
   if (!body.force) {
     const c = await env.DB.prepare('SELECT result FROM analysis WHERE image = ?').bind(key).first();
-    if (c) return json({ suggestion: cleanAnalysis(safeParse(c.result, {}), existing), cached: true });
+    if (c) return { suggestion: cleanAnalysis(safeParse(c.result, {}), existing), cached: true };
   }
 
   // 화면에서 보낸 작은 미리보기(긴 변 768px)를 쓰면 토큰이 크게 줄어듭니다. 없으면 저장된 사진을 씁니다.
@@ -883,7 +1000,7 @@ async function analyzeImage(request, env) {
   if (thumb && thumb.length <= 1_500_000 && /^[A-Za-z0-9+/=]+$/.test(thumb)) image = { mimeType: 'image/jpeg', data: thumb };
   else {
     const { value, metadata } = await env.IMAGES.getWithMetadata(key, 'arrayBuffer');
-    if (!value) return json({ error: '사진을 찾을 수 없습니다.' }, 404);
+    if (!value) return { error: '사진을 찾을 수 없습니다.', status: 404 };
     image = { mimeType: metadata?.type || 'image/jpeg', data: toBase64(value) };
   }
 
@@ -908,6 +1025,7 @@ async function analyzeImage(request, env) {
     ...(model !== FALLBACK_MODEL ? [{ model: FALLBACK_MODEL, schema: false }] : []),
   ];
   let lastError = '';
+  const lim = limitTracker();
   const skip = new Set(); // 한도·붐빔에 걸린 모델은 다시 묻지 않음
   for (const a of attempts) {
     if (skip.has(a.model)) continue;
@@ -919,16 +1037,17 @@ async function analyzeImage(request, env) {
       if (parsed) {
         await env.DB.prepare(`INSERT INTO analysis (image, result, created_at) VALUES (?, ?, ?)
           ON CONFLICT(image) DO UPDATE SET result = excluded.result, created_at = excluded.created_at`).bind(key, JSON.stringify(parsed), Date.now()).run().catch(() => {});
-        return json({ suggestion: cleanAnalysis(parsed, existing), model: a.model });
+        return { suggestion: cleanAnalysis(parsed, existing), model: a.model };
       }
       lastError = 'AI 답을 읽지 못했습니다.';
       continue;
     }
     lastError = res.error;
+    lim.see(res);
     if (switchModel(res)) { skip.add(a.model); continue; }
     if (stopRetry(res)) break;
   }
-  return json({ error: `사진을 분석하지 못했습니다. ${lastError}`.trim() }, 502);
+  return { error: `사진을 분석하지 못했습니다. ${lastError}`.trim(), status: 502, limitAt: lim.at };
 }
 
 // 여러 장을 한 번에 보여주고 "같은 관람"끼리 묶어 달라고 합니다. (작은 미리보기 사진으로 보냄)
@@ -1008,6 +1127,7 @@ async function groupPhotos(request, env) {
     ...(model !== FALLBACK_MODEL ? [{ model: FALLBACK_MODEL, schema: false }] : []),
   ];
   let lastError = '';
+  const lim = limitTracker();
   const skip = new Set(); // 한도·붐빔에 걸린 모델은 다시 묻지 않음
   for (const a of attempts) {
     if (skip.has(a.model)) continue;
@@ -1021,10 +1141,11 @@ async function groupPhotos(request, env) {
       continue;
     }
     lastError = res.error;
+    lim.see(res);
     if (switchModel(res)) { skip.add(a.model); continue; }
     if (stopRetry(res)) break;
   }
-  return json({ error: `사진을 묶지 못했습니다. ${lastError}`.trim() }, 502);
+  return aiFail(`사진을 묶지 못했습니다. ${lastError}`.trim(), lim);
 }
 
 async function geminiRequest(env, model, body) {
@@ -1065,6 +1186,37 @@ function stopRetry(res) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// 한도(429)에 걸린 시도들 중 가장 빨리 풀리는 때를 기억합니다 (모델마다 한도가 따로라서).
+function limitTracker() {
+  let at = 0;
+  return {
+    see(res) {
+      if (res?.status !== 429) return;
+      const t = res.resetAt || Date.now() + 3600 * 1000;
+      at = at ? Math.min(at, t) : t;
+    },
+    get at() { return at; },
+  };
+}
+
+// 실패 응답: 한도 때문이면 429 + 언제 다시 되는지(retryAt)
+function aiFail(msg, lim) {
+  return lim.at ? json({ error: msg, retryAt: lim.at, limited: true }, 429) : json({ error: msg }, 502);
+}
+
+function nextKstMidnight(now = Date.now()) {
+  const k = now + 9 * 3600 * 1000;
+  return k - (k % 86400000) + 86400000 - 9 * 3600 * 1000 + 2 * 60 * 1000; // 2분 여유
+}
+
+// 구글 무료 하루 한도는 미국 서부(태평양) 시간 자정에 다시 찹니다. 여름·겨울 시간 차이는 Intl 이 맞춰 줌.
+function nextPacificMidnight(now = Date.now()) {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', hourCycle: 'h23', hour: '2-digit', minute: '2-digit', second: '2-digit' }).formatToParts(new Date(now));
+  const g = (t) => Number(parts.find((p) => p.type === t)?.value || 0);
+  const since = ((g('hour') % 24) * 3600 + g('minute') * 60 + g('second')) * 1000;
+  return now - since + 86400000 + 5 * 60 * 1000; // 5분 여유
+}
+
 // 구글이 알려주는 "몇 초 뒤에 다시" (RetryInfo.retryDelay = "23s")
 function retryDelaySec(data) {
   for (const d of data?.error?.details || []) {
@@ -1080,11 +1232,12 @@ async function checkLimits(env) {
   const lim = { req: limitOf(st, 'aiDailyRequests'), tok: limitOf(st, 'aiDailyTokens'), rpm: limitOf(st, 'aiRpm') };
   if (!lim.req && !lim.tok && !lim.rpm) return null;
   const t = await env.DB.prepare('SELECT requests, tokens FROM ai_usage WHERE day = ?').bind(kstDay()).first();
-  if (lim.req && (t?.requests || 0) >= lim.req) return `오늘 AI 에너지를 다 썼어요 (하루 ${lim.req}번). 내일 다시 쓰거나 첫 화면 카드에서 한도를 바꿔 주세요.`;
-  if (lim.tok && (t?.tokens || 0) >= lim.tok) return `오늘 AI 에너지를 다 썼어요 (하루 ${lim.tok.toLocaleString('ko-KR')}토큰). 내일 다시 쓰거나 첫 화면 카드에서 한도를 바꿔 주세요.`;
+  // 앱이 정한 하루 한도는 한국 날짜 기준이라 한국 자정에 다시 찹니다.
+  if (lim.req && (t?.requests || 0) >= lim.req) return { msg: `오늘 AI 에너지를 다 썼어요 (하루 ${lim.req}번). 내일 다시 쓰거나 첫 화면 카드에서 한도를 바꿔 주세요.`, resetAt: nextKstMidnight() };
+  if (lim.tok && (t?.tokens || 0) >= lim.tok) return { msg: `오늘 AI 에너지를 다 썼어요 (하루 ${lim.tok.toLocaleString('ko-KR')}토큰). 내일 다시 쓰거나 첫 화면 카드에서 한도를 바꿔 주세요.`, resetAt: nextKstMidnight() };
   if (lim.rpm) {
     const mm = await env.DB.prepare('SELECT requests FROM ai_usage WHERE day = ?').bind(minuteKey()).first();
-    if ((mm?.requests || 0) >= lim.rpm) return `1분에 ${lim.rpm}번까지만 쓰도록 정해져 있어요. 1분쯤 뒤에 다시 해 주세요.`;
+    if ((mm?.requests || 0) >= lim.rpm) return { msg: `1분에 ${lim.rpm}번까지만 쓰도록 정해져 있어요. 1분쯤 뒤에 다시 해 주세요.`, resetAt: Date.now() + 70 * 1000 };
   }
   return null;
 }
@@ -1106,7 +1259,7 @@ async function countMinute(env) {
 // 쓴 양은 성공한 요청만 오늘 사용량(AI 에너지)에 더합니다.
 async function geminiFetch(env, model, body) {
   const blocked = await checkLimits(env).catch(() => null);
-  if (blocked) return { error: blocked, status: 429, own: true };
+  if (blocked) return { error: blocked.msg, status: 429, own: true, resetAt: blocked.resetAt };
   const waits503 = [2000, 5000];
   let waited429 = false;
   for (let attempt = 0; ; attempt++) {
@@ -1133,7 +1286,10 @@ async function geminiFetch(env, model, body) {
     if (res.status === 429) {
       const sec = retryDelaySec(data);
       if (!waited429 && sec > 0 && sec <= 8) { waited429 = true; await sleep(sec * 1000); continue; }
-      return { error: `구글 AI 무료 한도에 걸렸어요.${sec ? ` ${sec}초쯤 뒤에` : ' 잠시 뒤에'} 다시 해 주세요.`, status: 429 };
+      // 하루 한도(…PerDay…)면 구글이 다시 채우는 미국 서부 자정 뒤, 아니면(분당) 알려준 초 뒤
+      const daily = /PerDay/i.test(JSON.stringify(data?.error || {}));
+      const resetAt = daily ? nextPacificMidnight() : Date.now() + Math.max(70, sec + 10) * 1000;
+      return { error: daily ? '구글 AI 오늘 무료 한도를 다 썼어요. 한도가 다시 차면 이어서 해요.' : `구글 AI 무료 한도에 걸렸어요.${sec ? ` ${sec}초쯤 뒤에` : ' 잠시 뒤에'} 다시 해 주세요.`, status: 429, resetAt };
     }
     if (res.status >= 500) return { error: '구글 AI 서버가 지금 붐벼요. 잠시 뒤에 다시 해 주세요.', status: res.status };
     return { error: data?.error?.message || `HTTP ${res.status}`, status: res.status };
@@ -1257,6 +1413,7 @@ async function refreshVenue(env, name) {
   const model = env.GEMINI_MODEL || DEFAULT_MODEL;
   const attempts = [model, ...(model !== FALLBACK_MODEL ? [FALLBACK_MODEL] : [])];
   let lastError = '';
+  const lim = limitTracker();
   const skip = new Set();
   for (const mdl of attempts) {
     if (skip.has(mdl)) continue;
@@ -1273,10 +1430,12 @@ async function refreshVenue(env, name) {
       return json({ venue: { name, info, sources: res.sources || [], updatedAt: now } });
     }
     lastError = res.error;
+    lim.see(res);
     if (switchModel(res)) { skip.add(mdl); continue; }
     if (stopRetry(res)) break;
   }
-  return json({ error: `전시관 정보를 찾지 못했습니다. ${lastError}`.trim() }, 502);
+  if (lim.at) await enqueueJob(env, 'venue', name, {}, lim.at);
+  return aiFail(`전시관 정보를 찾지 못했습니다. ${lastError}`.trim() + (lim.at ? ` ${whenText(lim.at)}에 자동으로 다시 찾아요.` : ''), lim);
 }
 
 /* ─────────────── AI 사용량 · 설정 (첫 화면 게임 카드) ─────────────── */
@@ -1317,6 +1476,7 @@ async function getStats(env) {
       limit: { tokens: limitOf(st, 'aiDailyTokens'), requests: limitOf(st, 'aiDailyRequests'), rpm: limitOf(st, 'aiRpm') },
     },
     water: waterOf(st, today),
+    jobs: await jobSummary(env).catch(() => null),
   });
 }
 

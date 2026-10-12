@@ -43,9 +43,24 @@ async function init() {
   renderSkeleton();
   const [session] = await Promise.all([api('/api/session').catch(() => ({})), loadAll(), loadStats()]);
   state.loggedIn = !!session.loggedIn;
+  kickJobs();
   state.open = !!session.open;
   renderAuth();
   route();
+}
+
+// 한도가 풀려 때가 된 AI 일이 있으면, 화면을 열 때 한 건 처리합니다 (나머지는 GitHub Actions 가 1시간마다).
+async function kickJobs() {
+  if (!state.loggedIn || !state.stats?.jobs?.due) return;
+  try {
+    const r = await api('/api/jobs/run', { method: 'POST' });
+    if (r.ok) {
+      const label = { artist: '작가 소개', venue: '전시관 정보', analyze: '항목 빈칸' }[r.kind] || 'AI 일';
+      toast(`기다리던 ${label}를 AI가 채웠어요`);
+      await loadAll();
+    }
+  } catch { /* 아직 한도면 다음에 */ }
+  loadStats();
 }
 
 async function loadStats() {
@@ -347,6 +362,14 @@ function uniqueVisits(items) {
   return out.sort((a, b) => b.at - a.at);
 }
 
+// 다시 할 때: 지났으면 '곧', 오늘이면 '오후 4:05에', 아니면 '10월 13일 오후 4:05에'
+function whenLabel(ms) {
+  if (!ms || ms <= Date.now() + 60000) return '곧';
+  const d = new Date(ms);
+  const t = d.toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' });
+  return new Date().toDateString() === d.toDateString() ? `${t}에` : `${d.getMonth() + 1}월 ${d.getDate()}일 ${t}에`;
+}
+
 function energyOf(ai) {
   if (!ai) return null;
   const parts = [];
@@ -413,6 +436,7 @@ function renderHero() {
       <span class="energy-head"><span class="energy-label">${ICON.spark}AI 에너지${isClaude ? ' (Claude)' : ''}</span><b>${enPct == null ? '한도 미정' : `${enPct}%`}</b></span>
       <span class="bar energy-bar ${enLevel}"><i style="width:${enPct == null ? 100 : enPct}%"></i></span>
       <span class="bar-caption">${esc(aiCaption)}</span>
+      ${state.stats?.jobs?.waiting ? `<span class="bar-caption jobs-line">⏳ 기다리는 AI 일 <b>${state.stats.jobs.waiting}개</b> · ${esc(whenLabel(state.stats.jobs.nextAt))} 자동으로 다시</span>` : ''}
     </button>`;
   const sayIt = (t) => { const el = $('#tamaSay'); if (el) el.textContent = t; };
   const bounce = (cls) => { const el = $('#tama'); el.classList.remove('jump', 'drink'); void el.offsetWidth; el.classList.add(cls); };
@@ -628,6 +652,16 @@ function openMore() {
   };
 }
 
+function jobsHtml() {
+  const j = state.stats?.jobs;
+  if (!j?.waiting) return '';
+  const KIND = { artist: '작가 소개·대표작', venue: '전시관 정보', analyze: '항목 빈칸 채우기' };
+  const name = (x) => (x.kind === 'analyze' ? state.items.find((i) => i.id === x.target)?.title || '항목' : x.target);
+  return `<h3 class="section-title" style="margin:20px 0 8px">기다리는 AI 일 ${j.waiting}개</h3>
+    <ul class="job-list">${j.list.map((x) => `<li><span><b>${esc(KIND[x.kind] || x.kind)}</b> ${esc(name(x))}</span><small>${esc(whenLabel(x.runAt))} 다시${x.tries ? ` · ${x.tries}번 실패` : ''}</small></li>`).join('')}</ul>
+    <p class="hint">AI 한도에 걸려 못 한 일이에요. 한도가 풀리면 1시간 안에 자동으로 이어서 해요 (앱을 열어도 한 건씩 해요).</p>`;
+}
+
 function openEnergy() {
   const ai = state.stats?.ai;
   if (!ai) return toast('AI 사용량을 불러오지 못했어요');
@@ -638,6 +672,7 @@ function openEnergy() {
       <div><span>오늘 (${esc(ai.day)})</span><b>${num(ai.today.requests)}번${isClaude ? '' : ` · ${num(ai.today.tokens)}토큰`}</b></div>
       <div><span>이번 달</span><b>${num(ai.month.requests)}번${isClaude ? '' : ` · ${num(ai.month.tokens)}토큰`}</b></div>
     </div>
+    ${jobsHtml()}
     <p class="hint" style="margin:12px 0 20px;line-height:1.6">${isClaude
       ? 'Claude 판은 사장님 Claude 계정 사용량을 씁니다. 남은 양은 Claude가 알려주지 않아서, 이 앱에서 부른 횟수만 셉니다.'
       : '구글은 남은 토큰을 앱에 알려주지 않아요. 그래서 이 앱이 쓴 양을 직접 세고, 아래 하루 한도에서 빼서 보여줍니다. 무료 한도는 Google AI Studio 의 사용량 화면에서 확인할 수 있어요.'}</p>
@@ -1286,7 +1321,7 @@ function renderAutoBox() {
   if (!state.artists.length) { box.innerHTML = ''; return; }
   box.innerHTML = `<div class="auto-card">
       <div><strong>${ICON.spark}소개·대표작 자동 채우기</strong>
-      <p>${autoRun ? esc(autoRun) : empty ? `비어 있는 작가 ${empty}명 · 매일 새벽 자동으로 채워요` : '모든 작가에 소개와 대표작이 있어요'}</p></div>
+      <p>${autoRun ? esc(autoRun) : empty ? `비어 있는 작가 ${empty}명 · 1시간마다 자동으로 채워요 (AI 한도 안에서)` : '모든 작가에 소개와 대표작이 있어요'}</p></div>
       ${empty && !autoRun ? '<button class="btn small" id="autoNow" type="button">지금 채우기</button>' : ''}
     </div>`;
   if ($('#autoNow')) $('#autoNow').onclick = () => needLogin(runAuto);
@@ -1601,7 +1636,13 @@ function openEditor(it = null) {
         };
       }
     } catch (err) {
-      hint(`AI 자동 채우기를 못 했어요: ${err.message}`);
+      if (err.status === 429) {
+        // 한도에 걸림: 저장하면 한도가 풀린 뒤 AI가 빈칸을 채웁니다.
+        draft.aiLater = key;
+        draft.aiRetryAt = err.data?.retryAt || 0;
+        draft.aiCategory = !draft.catTouched;
+        hint(`AI 한도에 걸렸어요. 이대로 저장하면 ${whenLabel(draft.aiRetryAt)} 이후 AI가 빈칸(제목·작가·태그 등)을 자동으로 채워요.`);
+      } else hint(`AI 자동 채우기를 못 했어요: ${err.message}`);
     }
     $('#aiFill').disabled = false;
   };
@@ -1653,6 +1694,7 @@ function openEditor(it = null) {
       tags: draft.tags,
       images: draft.images,
     };
+    if (draft.aiLater && draft.images.includes(draft.aiLater)) Object.assign(body, { aiLater: draft.aiLater, aiRetryAt: draft.aiRetryAt, aiCategory: draft.aiCategory });
     if (!body.title.trim() && !body.memo.trim() && !body.images.length) return toast('제목, 사진, 메모 중 하나는 넣어 주세요');
     setBusy($('#fSave'), true);
     try {
@@ -1664,7 +1706,8 @@ function openEditor(it = null) {
       else state.items.unshift(res.item);
       closeSheet();
       await refreshArtists();
-      toast(it ? '수정했어요' : '추가했어요');
+      toast(body.aiLater ? '저장했어요. AI 한도가 풀리면 빈칸을 채워 둘게요' : it ? '수정했어요' : '추가했어요');
+      if (body.aiLater) loadStats();
     } catch (err) {
       toast(err.message);
       setBusy($('#fSave'), false);
@@ -1806,11 +1849,15 @@ async function runBulk(files) {
   step('AI가 같은 전시·같은 영화끼리 묶는 중…');
   let groups;
   let aiNote = '';
+  let later = null; // 한도에 걸렸으면 { retryAt } → 새 항목마다 나중에 AI가 채우도록
   try {
     ({ groups } = await api('/api/group', { method: 'POST', body: { photos: ok.map((p) => ({ data: p.thumb, date: p.date, blob: p.smallBlob })) } }));
   } catch (err) {
     groups = groupByDay(ok);
-    aiNote = `AI로 묶지 못해서 찍은 날짜끼리 묶었어요 (${err.message})`;
+    if (err.status === 429) {
+      later = { retryAt: err.data?.retryAt || 0 };
+      aiNote = `AI 한도에 걸려서 찍은 날짜끼리 묶었어요. ${whenLabel(later.retryAt)} 이후 AI가 각 항목의 제목·분류·작가를 자동으로 채워요`;
+    } else aiNote = `AI로 묶지 못해서 찍은 날짜끼리 묶었어요 (${err.message})`;
   }
   if (stop) { ok.forEach((p) => api(`/api/images/${p.key}`, { method: 'DELETE' }).catch(() => {})); return; }
 
@@ -1849,7 +1896,8 @@ async function runBulk(files) {
         merged++;
       } else {
         const dates = g.photos.map((i) => ok[i].date).filter(Boolean).sort();
-        const body = { category: g.category, title: g.title || (ok[g.photos[0]].file.name.replace(/\.[^.]+$/, '')), artist: g.artist, place: g.place, memo: g.memo, tags: g.tags, images: keys, source: '', visitedAt: dates.length ? toDayMs(dates[0].slice(0, 10)) : 0 };
+        const body = { category: g.category, title: g.title || (later ? '' : ok[g.photos[0]].file.name.replace(/\.[^.]+$/, '')), artist: g.artist, place: g.place, memo: g.memo, tags: g.tags, images: keys, source: '', visitedAt: dates.length ? toDayMs(dates[0].slice(0, 10)) : 0 };
+        if (later) Object.assign(body, { aiLater: keys[0], aiRetryAt: later.retryAt, aiCategory: true });
         const { item } = await api('/api/items', { method: 'POST', body });
         state.items.unshift(item);
         g.artist = item.artist;

@@ -22,7 +22,7 @@ export async function api(path, { method = 'GET', body, raw, type } = {}) {
     throw new Error('인터넷 연결을 확인해 주세요');
   }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw Object.assign(new Error(data.error || `오류가 났어요 (${res.status})`), { status: res.status });
+  if (!res.ok) throw Object.assign(new Error(data.error || `오류가 났어요 (${res.status})`), { status: res.status, data });
   return data;
 }
 

@@ -1,0 +1,34 @@
+name: AI 대기 일 처리 (1시간마다)
+
+# AI(구글 Gemini) 한도에 걸려 못 한 일을 한도가 풀린 뒤 자동으로 이어서 합니다.
+#   - 작가 소개·대표작이 비어 있는 작가 채우기
+#   - 전시관 정보 다시 찾기
+#   - 한도 때문에 AI 없이 저장된 항목의 빈칸(제목·분류·작가·태그) 채우기
+# 무료 한도(분당 5회)를 지키려고 한 건마다 16초 쉬고, 한 번에 최대 12건, 또 한도에 걸리면 바로 멈춥니다.
+on:
+  schedule:
+    - cron: '23 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: ai-jobs
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 때가 된 일 처리
+        env:
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+        run: |
+          B=https://zeminism-archive.pages.dev
+          jq -n --arg p "$ADMIN_PASSWORD" '{password:$p}' | curl -sS -c jar -H 'content-type: application/json' -d @- "$B/api/login" -o /dev/null -w "로그인 %{http_code}\n"
+          for n in $(seq 1 12); do
+            code=$(curl -sS -b jar -X POST "$B/api/jobs/run" -o out.json -w "%{http_code}")
+            echo "[$n] $code $(jq -c '{kind, target, ok, limited, error, 남은일: .jobs.waiting, 지금할일: .jobs.due}' out.json 2>/dev/null || cat out.json)"
+            if [ "$code" = "429" ]; then echo "한도에 걸림 — 풀리는 때 다시 해요"; break; fi
+            if [ "$code" != "200" ]; then echo "오류 — 다음 시간에 다시"; break; fi
+            if [ "$(jq -r '.target // empty' out.json)" = "" ] || [ "$(jq -r '.jobs.due' out.json)" = "0" ]; then echo "지금 할 일 없음"; break; fi
+            sleep 16
+          done
