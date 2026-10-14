@@ -10,6 +10,8 @@
  *   POST   /api/images                    로그인. 사진 한 장 올리기 (본문 = 사진 파일)
  *   DELETE /api/images/:key               로그인. 올렸다가 취소한 사진 지우기
  *   GET    /img/:key                      공개. 사진 보기
+ *   POST   /api/files                     로그인. 파일 하나 올리기 (본문 = 파일, x-file-name 머리글 = 이름). 20MB까지
+ *   GET    /file/:key                     공개. 첨부 파일 받기 (원래 이름으로)
  *   POST   /api/analyze  { image }        로그인. 사진을 보고 분류·제목·작가·태그 추천 (Gemini)
  *   GET    /api/venues/:name              공개. 저장해 둔 전시관 정보 (주소·운영시간·휴관일·지금 하는 전시)
  *   POST   /api/venues/:name/refresh      로그인. 구글 검색으로 전시관 정보를 새로 찾기 (Gemini)
@@ -76,6 +78,9 @@ export default {
     const url = new URL(request.url);
     const { pathname } = url;
 
+    if (pathname.startsWith('/file/')) {
+      return request.method === 'GET' ? serveFile(env, decodeURIComponent(pathname.slice(6))) : methodNotAllowed();
+    }
     if (pathname.startsWith('/img/')) {
       return request.method === 'GET' ? serveImage(env, decodeURIComponent(pathname.slice(5))) : methodNotAllowed();
     }
@@ -124,6 +129,10 @@ async function route(request, env, parts, ctx) {
     if (id && m === 'PUT') return (await requireLogin(request, env)) || updateWish(request, env, id);
     if (id && m === 'DELETE') return (await requireLogin(request, env)) || deleteWish(env, id);
     return methodNotAllowed();
+  }
+
+  if (head === 'files' && !id) {
+    return m === 'POST' ? (await requireLogin(request, env)) || uploadFile(request, env) : methodNotAllowed();
   }
 
   if (head === 'images') {
@@ -277,6 +286,8 @@ async function ensureSchema(env) {
   await env.DB.prepare("ALTER TABLE items ADD COLUMN place TEXT NOT NULL DEFAULT ''").run().catch(() => {});
   // 2026-10 관람일 (사진 찍은 날). 0 이면 모름 → 화면에서 작성일을 씀
   await env.DB.prepare('ALTER TABLE items ADD COLUMN visited_at INTEGER NOT NULL DEFAULT 0').run().catch(() => {});
+  // 2026-10 첨부 파일 [{ key, name, type, size }] (파일 자체는 KV, 키는 f- 로 시작)
+  await env.DB.prepare("ALTER TABLE items ADD COLUMN files TEXT NOT NULL DEFAULT '[]'").run().catch(() => {});
   await env.DB.prepare(`CREATE TABLE IF NOT EXISTS ai_jobs (
     key TEXT PRIMARY KEY, kind TEXT NOT NULL, target TEXT NOT NULL, payload TEXT NOT NULL DEFAULT '{}',
     status TEXT NOT NULL DEFAULT 'wait', tries INTEGER NOT NULL DEFAULT 0, run_at INTEGER NOT NULL DEFAULT 0,
@@ -303,6 +314,7 @@ function rowToItem(r) {
     tags: safeParse(r.tags, []),
     source: r.source,
     images: safeParse(r.images, []),
+    files: safeParse(r.files, []),
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -338,20 +350,34 @@ function cleanItem(body) {
     source: str(body.source, LIMITS.source),
     tags,
     images,
+    // files 를 안 보내면(null) 수정할 때 예전 첨부를 그대로 둡니다.
+    files: Array.isArray(body.files) ? cleanFiles(body.files) : null,
   };
+}
+
+const MAX_FILES = 20;
+const MAX_FILE_BYTES = 20 * 1024 * 1024; // KV 한 칸 25MB 안쪽
+function cleanFiles(list) {
+  return list.filter((f) => f && /^f-[a-z0-9-]{8,64}$/.test(String(f.key))).slice(0, MAX_FILES).map((f) => ({
+    key: String(f.key),
+    name: String(f.name || '파일').replace(/[\r\n"\\/]/g, '_').slice(0, 200),
+    type: String(f.type || 'application/octet-stream').slice(0, 100),
+    size: Math.max(0, Math.floor(Number(f.size) || 0)),
+  }));
 }
 
 async function createItem(request, env, ctx) {
   const body = await readJson(request);
   if (!body) return json({ error: '잘못된 요청입니다.' }, 400);
   const it = cleanItem(body);
-  if (!it.title && !it.images.length && !it.memo) return json({ error: '제목, 사진, 메모 중 하나는 있어야 합니다.' }, 400);
+  if (!it.title && !it.images.length && !it.memo && !it.files?.length) return json({ error: '제목, 사진, 메모 중 하나는 있어야 합니다.' }, 400);
   it.artist = await canonicalArtist(env, it.artist);
+  it.files = it.files || [];
   const now = Date.now();
   const id = crypto.randomUUID();
   await env.DB.prepare(
-    'INSERT INTO items (id, title, artist, category, place, visited_at, memo, tags, source, images, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-  ).bind(id, it.title, it.artist, it.category, it.place, it.visitedAt, it.memo, JSON.stringify(it.tags), it.source, JSON.stringify(it.images), now, now).run();
+    'INSERT INTO items (id, title, artist, category, place, visited_at, memo, tags, source, images, files, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  ).bind(id, it.title, it.artist, it.category, it.place, it.visitedAt, it.memo, JSON.stringify(it.tags), it.source, JSON.stringify(it.images), JSON.stringify(it.files), now, now).run();
   const row = await env.DB.prepare('SELECT * FROM items WHERE id = ?').bind(id).first();
   queueArtist(env, ctx, it.artist);
   await queueAnalyzeLater(env, id, body, it.images);
@@ -372,14 +398,17 @@ async function updateItem(request, env, id, ctx) {
   const old = await env.DB.prepare('SELECT * FROM items WHERE id = ?').bind(id).first();
   if (!old) return notFound();
   const it = cleanItem(body);
-  if (!it.title && !it.images.length && !it.memo) return json({ error: '제목, 사진, 메모 중 하나는 있어야 합니다.' }, 400);
+  const oldFiles = safeParse(old.files, []);
+  if (!it.files) it.files = oldFiles;
+  if (!it.title && !it.images.length && !it.memo && !it.files.length) return json({ error: '제목, 사진, 메모 중 하나는 있어야 합니다.' }, 400);
   it.artist = await canonicalArtist(env, it.artist, id);
   await env.DB.prepare(
-    'UPDATE items SET title = ?, artist = ?, category = ?, place = ?, visited_at = ?, memo = ?, tags = ?, source = ?, images = ?, updated_at = ? WHERE id = ?'
-  ).bind(it.title, it.artist, it.category, it.place, it.visitedAt, it.memo, JSON.stringify(it.tags), it.source, JSON.stringify(it.images), Date.now(), id).run();
-  // 수정하면서 뺀 사진은 저장소에서도 지웁니다.
+    'UPDATE items SET title = ?, artist = ?, category = ?, place = ?, visited_at = ?, memo = ?, tags = ?, source = ?, images = ?, files = ?, updated_at = ? WHERE id = ?'
+  ).bind(it.title, it.artist, it.category, it.place, it.visitedAt, it.memo, JSON.stringify(it.tags), it.source, JSON.stringify(it.images), JSON.stringify(it.files), Date.now(), id).run();
+  // 수정하면서 뺀 사진·파일은 저장소에서도 지웁니다.
   const removed = safeParse(old.images, []).filter((k) => !it.images.includes(k));
-  await Promise.all(removed.map((k) => env.IMAGES?.delete(k)));
+  const removedFiles = oldFiles.map((f) => f.key).filter((k) => !it.files.some((f) => f.key === k));
+  await Promise.all([...removed, ...removedFiles].map((k) => env.IMAGES?.delete(k)));
   if (it.artist !== old.artist) queueArtist(env, ctx, it.artist);
   await queueAnalyzeLater(env, id, body, it.images);
   const row = await env.DB.prepare('SELECT * FROM items WHERE id = ?').bind(id).first();
@@ -387,10 +416,10 @@ async function updateItem(request, env, id, ctx) {
 }
 
 async function deleteItem(env, id) {
-  const old = await env.DB.prepare('SELECT images FROM items WHERE id = ?').bind(id).first();
+  const old = await env.DB.prepare('SELECT images, files FROM items WHERE id = ?').bind(id).first();
   if (!old) return notFound();
   await env.DB.prepare('DELETE FROM items WHERE id = ?').bind(id).run();
-  await Promise.all(safeParse(old.images, []).map((k) => env.IMAGES?.delete(k)));
+  await Promise.all([...safeParse(old.images, []), ...safeParse(old.files, []).map((f) => f.key)].map((k) => env.IMAGES?.delete(k)));
   return json({ ok: true });
 }
 
@@ -410,9 +439,43 @@ async function uploadImage(request, env) {
   return json({ key }, 201);
 }
 
+async function uploadFile(request, env) {
+  if (!env.IMAGES) return json({ error: '파일 저장소(IMAGES)가 연결되지 않았습니다.' }, 503);
+  let name = '파일';
+  try { name = decodeURIComponent(request.headers.get('x-file-name') || '파일'); } catch { /* 그대로 */ }
+  name = name.replace(/[\r\n"\\/]/g, '_').slice(0, 200) || '파일';
+  const type = (request.headers.get('content-type') || 'application/octet-stream').split(';')[0].trim().slice(0, 100);
+  const buf = await request.arrayBuffer();
+  if (!buf.byteLength) return json({ error: '빈 파일입니다.' }, 400);
+  if (buf.byteLength > MAX_FILE_BYTES) return json({ error: '파일이 너무 커요 (20MB까지).' }, 413);
+  const key = `f-${crypto.randomUUID()}`;
+  await env.IMAGES.put(key, buf, { metadata: { type, name } });
+  return json({ file: { key, name, type, size: buf.byteLength } }, 201);
+}
+
+// 첨부 파일 받기: 원래 이름으로 내려받게 하고, 브라우저가 열어 실행하지 않도록 막습니다.
+async function serveFile(env, key) {
+  if (!env.IMAGES || !/^f-[a-z0-9-]{8,64}$/.test(key)) return new Response('Not found', { status: 404 });
+  const { value, metadata } = await env.IMAGES.getWithMetadata(key, 'arrayBuffer');
+  if (!value) return new Response('Not found', { status: 404 });
+  const name = metadata?.name || 'file';
+  const type = metadata?.type || 'application/octet-stream';
+  // PDF·사진은 바로 보기, 나머지(html 등)는 내려받기만
+  const inline = /^(application\/pdf|image\/(jpeg|png|webp|gif))$/.test(type);
+  return new Response(value, {
+    headers: {
+      'content-type': inline ? type : 'application/octet-stream',
+      'content-disposition': `${inline ? 'inline' : 'attachment'}; filename="${name.replace(/[^\x20-\x7e]/g, '_')}"; filename*=UTF-8''${encodeURIComponent(name)}`,
+      'cache-control': 'public, max-age=31536000, immutable',
+      'x-content-type-options': 'nosniff',
+      'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+    },
+  });
+}
+
 async function deleteImage(env, key) {
   // 이미 레퍼런스에 쓰이고 있는 사진은 이 길로 지우지 않습니다.
-  const used = await env.DB.prepare('SELECT 1 FROM items WHERE images LIKE ? LIMIT 1').bind(`%"${key}"%`).first();
+  const used = await env.DB.prepare('SELECT 1 FROM items WHERE images LIKE ? OR files LIKE ? LIMIT 1').bind(`%"${key}"%`, `%"${key}"%`).first();
   const usedByBoard = await env.DB.prepare('SELECT 1 FROM boards WHERE data LIKE ? LIMIT 1').bind(`%"${key}"%`).first();
   if (used || usedByBoard) return json({ error: '사용 중인 사진입니다.' }, 409);
   await env.IMAGES?.delete(key);
@@ -831,8 +894,8 @@ async function mergeItems(request, env) {
   const pick = (k) => keep[k] || others.find((o) => o[k])?.[k] || '';
   const visited = [keep, ...others].map((o) => o.visitedAt).filter(Boolean);
   await env.DB.batch([
-    env.DB.prepare('UPDATE items SET images = ?, tags = ?, memo = ?, artist = ?, place = ?, visited_at = ?, created_at = ?, updated_at = ? WHERE id = ?')
-      .bind(JSON.stringify(images), JSON.stringify(tags), memo, pick('artist'), pick('place'), visited.length ? Math.min(...visited) : 0,
+    env.DB.prepare('UPDATE items SET images = ?, files = ?, tags = ?, memo = ?, artist = ?, place = ?, visited_at = ?, created_at = ?, updated_at = ? WHERE id = ?')
+      .bind(JSON.stringify(images), JSON.stringify([...keep.files, ...others.flatMap((o) => o.files)].slice(0, MAX_FILES)), JSON.stringify(tags), memo, pick('artist'), pick('place'), visited.length ? Math.min(...visited) : 0,
         Math.min(...rows.map((r) => r.createdAt)), Date.now(), keepId),
     ...others.map((o) => env.DB.prepare('DELETE FROM items WHERE id = ?').bind(o.id)),
   ]);

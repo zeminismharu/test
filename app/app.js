@@ -1228,7 +1228,7 @@ function cardHtml(it) {
       ${it.title ? `<p class="item-title">${esc(it.title)}</p>` : ''}
       ${it.artist || !state.cat ? `<div class="item-artist">${[state.cat ? '' : catLabel(it.category), it.artist].filter(Boolean).map(esc).join(' · ')}</div>` : ''}
       ${it.memo ? `<div class="item-memo">${esc(it.memo)}</div>` : ''}
-      <div class="item-sub">${[it.place, fmtDate(seenAt(it))].filter(Boolean).map(esc).join(' · ')}</div>
+      <div class="item-sub">${[it.place, fmtDate(seenAt(it)), it.files?.length ? `📎 파일 ${it.files.length}` : ''].filter(Boolean).map(esc).join(' · ')}</div>
     </div>
   </button>`;
 }
@@ -1459,6 +1459,22 @@ async function refreshArtists() {
 
 /* ─────────────── 상세 ─────────────── */
 
+/* ─────────────── 첨부 파일 ─────────────── */
+
+const fmtSize = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)}MB` : `${Math.max(1, Math.round(n / 1024))}KB`);
+const fileIcon = (f) => (/\.(dwg|dxf)$/i.test(f.name) ? 'CAD' : /pdf/.test(f.type) || /\.pdf$/i.test(f.name) ? 'PDF' : /^image\//.test(f.type) ? 'IMG' : /sheet|excel|csv/.test(f.type) || /\.(xlsx?|csv)$/i.test(f.name) ? 'XLS' : /word|document/.test(f.type) || /\.(docx?|hwpx?)$/i.test(f.name) ? 'DOC' : /\.(dwg|dxf)$/i.test(f.name) ? 'CAD' : (f.name.split('.').pop() || 'FILE').slice(0, 4).toUpperCase());
+
+// 받기 링크 (PDF·사진은 새 창에서 바로 보이고, 나머지는 원래 이름으로 내려받아짐)
+function fileRow(f, i, del = false) {
+  return `<li class="file-row">
+    <a href="/file/${esc(f.key)}" target="_blank" rel="noopener" download="${esc(f.name)}">
+      <span class="file-ic">${esc(fileIcon(f))}</span>
+      <span class="file-main"><strong>${esc(f.name)}</strong><small>${fmtSize(f.size || 0)}</small></span>
+    </a>
+    ${del ? `<button type="button" class="file-del" data-i="${i}" aria-label="파일 빼기">${ICON.x}</button>` : ''}
+  </li>`;
+}
+
 function openDetail(id) {
   const it = state.items.find((i) => i.id === id);
   if (!it) return;
@@ -1477,6 +1493,7 @@ function openDetail(id) {
     ${it.source ? (/^https?:\/\//i.test(it.source)
       ? `<a class="detail-source" href="${esc(it.source)}" target="_blank" rel="noopener noreferrer">출처 · ${esc(it.source)}</a>`
       : `<span class="detail-source">출처 · ${esc(it.source)}</span>`) : ''}
+    ${it.files?.length ? `<ul class="file-list">${it.files.map((f) => fileRow(f)).join('')}</ul>` : ''}
     <p class="detail-date">${it.visitedAt ? `관람 ${fmtDate(it.visitedAt)} · ` : ''}작성 ${fmtDate(it.createdAt)}${it.updatedAt !== it.createdAt ? ` · 수정 ${fmtDate(it.updatedAt)}` : ''}</p>
     ${imgs.length ? '<button class="btn ghost block" id="dMove" type="button" style="margin-top:16px">사진을 다른 항목으로 옮기기</button>' : ''}
     <div class="btn-row detail-actions">
@@ -1536,8 +1553,9 @@ function openEditor(it = null) {
     category: it?.category || state.cat || 'exhibition',
     catTouched: !!it, // 사람이 분류를 직접 골랐으면 AI가 바꾸지 않음
     autoDone: !!it, // 새 레퍼런스는 첫 사진을 올리면 AI가 한 번 자동으로 채움
-    newKeys: [], // 이번에 새로 올린 사진 (취소하면 지움)
+    newKeys: [], // 이번에 새로 올린 사진·파일 (취소하면 지움)
     uploading: 0,
+    files: it ? [...(it.files || [])] : [],
   };
   const artistNames = state.artists.map((a) => a.name);
 
@@ -1580,6 +1598,12 @@ function openEditor(it = null) {
         <p class="hint">쉼표(,)나 엔터로 여러 개 넣을 수 있어요</p>
       </div>
       <div>
+        <span class="label">파일 첨부 <span class="hint" style="font-weight:500">PDF·도면·문서 등, 한 개 20MB까지</span></span>
+        <ul class="file-list" id="fFiles"></ul>
+        <button type="button" class="btn ghost small" id="fileAdd">${ICON.stack} 파일 넣기</button>
+        <input type="file" id="attachInput" multiple hidden />
+      </div>
+      <div>
         <label class="label" for="fSource">출처 (선택)</label>
         <input class="field" id="fSource" maxlength="1000" placeholder="링크나 책 이름" value="${esc(it?.source || '')}" inputmode="url" />
       </div>
@@ -1589,6 +1613,12 @@ function openEditor(it = null) {
       </div>
     </form>`, { onClose: () => cleanupDraft(draft) });
 
+  const renderFiles = () => {
+    $('#fFiles').innerHTML = draft.files.map((f, i) => (f.uploading
+      ? `<li class="file-row uploading"><span class="file-ic">…</span><span class="file-main"><strong>${esc(f.name)}</strong><small>올리는 중…</small></span></li>`
+      : fileRow(f, i, true))).join('');
+    $('#fFiles').querySelectorAll('.file-del').forEach((b) => (b.onclick = () => { draft.files.splice(Number(b.dataset.i), 1); renderFiles(); }));
+  };
   const renderPhotos = () => {
     $('#photos').innerHTML =
       draft.images.map((k, i) => `<div class="photo ${k.startsWith('blob:') ? 'uploading' : ''}">
@@ -1617,6 +1647,32 @@ function openEditor(it = null) {
   $('#fCat').querySelectorAll('button').forEach((b) => (b.onclick = () => { draft.category = b.dataset.cat; draft.catTouched = true; renderCat(); }));
   renderCat();
 
+  renderFiles();
+  $('#fileAdd').onclick = () => $('#attachInput').click();
+  $('#attachInput').onchange = async (e) => {
+    const files = [...e.target.files];
+    e.target.value = '';
+    for (const file of files) {
+      if (draft.files.length >= 20) { toast('파일은 한 항목에 20개까지예요'); break; }
+      if (file.size > 20 * 1024 * 1024) { toast(`${file.name}: 20MB가 넘어서 넣지 못했어요`); continue; }
+      const slot = { name: file.name, uploading: true };
+      draft.files.push(slot);
+      draft.uploading++;
+      renderFiles();
+      try {
+        const res = await fetch('/api/files', { method: 'POST', body: file, credentials: 'same-origin', headers: { 'content-type': file.type || 'application/octet-stream', 'x-file-name': encodeURIComponent(file.name) } });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || `올리지 못했어요 (${res.status})`);
+        draft.files[draft.files.indexOf(slot)] = data.file;
+        draft.newKeys.push(data.file.key);
+      } catch (err) {
+        draft.files.splice(draft.files.indexOf(slot), 1);
+        toast(`${file.name}: ${err.message}`);
+      }
+      draft.uploading--;
+      renderFiles();
+    }
+  };
   $('#fileInput').onchange = async (e) => {
     const files = [...e.target.files].slice(0, 60 - draft.images.length);
     e.target.value = '';
@@ -1753,9 +1809,10 @@ function openEditor(it = null) {
       source: $('#fSource').value,
       tags: draft.tags,
       images: draft.images,
+      files: draft.files.filter((f) => f.key),
     };
     if (draft.aiLater && draft.images.includes(draft.aiLater)) Object.assign(body, { aiLater: draft.aiLater, aiRetryAt: draft.aiRetryAt, aiCategory: draft.aiCategory });
-    if (!body.title.trim() && !body.memo.trim() && !body.images.length) return toast('제목, 사진, 메모 중 하나는 넣어 주세요');
+    if (!body.title.trim() && !body.memo.trim() && !body.images.length && !body.files.length) return toast('제목, 사진, 메모, 파일 중 하나는 넣어 주세요');
     setBusy($('#fSave'), true);
     try {
       const res = it

@@ -42,7 +42,8 @@
 - 사람이 고른 대표작: `data/artist-works.json` + `.github/workflows/artist-works.yml` (list = 페이지별 그림 후보·옆 글 보기, apply = 그림 받아 올리고 저장). 2026-10-12 5명(김 크리스틴 선·박서보·김보희·김세은·박혜수) 10점을 그림 옆 작품 이름과 대조해 넣음. 정민희는 웹에서 정보를 못 찾아 비워 둠.
 - 데이터 점검: `.github/workflows/check.yml` (공개 API 읽기만, 항목·가볼 곳을 로그로). 이 작업 환경에서는 pages.dev 에 직접 못 들어가서 만듦.
 - 영화 연도별 기록: 같은 해 같은 제목은 1편. 칭호는 app.js MOVIE_TITLES.
-- 백업(`/api/export`, `/api/import`)은 표 내용만. 사진(KV)은 들어가지 않음.
+- 파일 첨부(2026-10-14 사장님 "파일을 저장할 수 있게, 간단하게"): 항목마다 아무 파일 20개·한 개 20MB까지. items.files [{key,name,type,size}], 파일은 KV(키 f-…, 메타데이터에 이름). `POST /api/files`(x-file-name 머리글), 받기 `GET /file/:key` — PDF·사진은 바로 보기, 나머지는 원래 이름으로 내려받기(sandbox·nosniff). 수정 때 files 를 안 보내면 예전 첨부 유지, 뺀 파일·지운 항목의 파일은 KV 에서도 지움, 합치기 때 모음.
+- 백업(`/api/export`, `/api/import`)은 표 내용만. 사진·첨부 파일(KV)은 들어가지 않음.
 - 표는 `_worker.js` 의 ensureSchema 가 자동으로 만듭니다. 칸을 추가할 때는 ALTER 를 따로 넣어야 합니다.
 
 ## 배포
