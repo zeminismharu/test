@@ -66,7 +66,7 @@ const DEFAULT_LIMITS = { aiRpm: 4, aiDailyRequests: 36 };
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const MAX_IMAGES = 60; // 한 관람에 사진이 많아 합칠 수 있도록
 // 분류: 전시관 · 영화 · 그 외 (화면에 보이는 순서)
-const CATEGORIES = ['exhibition', 'movie', 'etc'];
+const CATEGORIES = ['exhibition', 'movie', 'etc', 'photobook']; // 2026-10-19 사진집 추가
 const LIMITS = { place: 100, title: 200, artist: 100, memo: 10000, source: 1000, tag: 40, tags: 30, description: 5000 };
 
 const encoder = new TextEncoder();
@@ -288,6 +288,8 @@ async function ensureSchema(env) {
   await env.DB.prepare('ALTER TABLE items ADD COLUMN visited_at INTEGER NOT NULL DEFAULT 0').run().catch(() => {});
   // 2026-10 첨부 파일 [{ key, name, type, size }] (파일 자체는 KV, 키는 f- 로 시작)
   await env.DB.prepare("ALTER TABLE items ADD COLUMN files TEXT NOT NULL DEFAULT '[]'").run().catch(() => {});
+  // 2026-10-19 사진마다 캡션 { 사진키: "왜 이 사진이 좋았는지" }
+  await env.DB.prepare("ALTER TABLE items ADD COLUMN captions TEXT NOT NULL DEFAULT '{}'").run().catch(() => {});
   await env.DB.prepare(`CREATE TABLE IF NOT EXISTS ai_jobs (
     key TEXT PRIMARY KEY, kind TEXT NOT NULL, target TEXT NOT NULL, payload TEXT NOT NULL DEFAULT '{}',
     status TEXT NOT NULL DEFAULT 'wait', tries INTEGER NOT NULL DEFAULT 0, run_at INTEGER NOT NULL DEFAULT 0,
@@ -315,6 +317,7 @@ function rowToItem(r) {
     source: r.source,
     images: safeParse(r.images, []),
     files: safeParse(r.files, []),
+    captions: safeParse(r.captions, {}),
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -352,7 +355,20 @@ function cleanItem(body) {
     images,
     // files 를 안 보내면(null) 수정할 때 예전 첨부를 그대로 둡니다.
     files: Array.isArray(body.files) ? cleanFiles(body.files) : null,
+    // captions 도 안 보내면(null) 예전 것을 그대로 둡니다.
+    captions: body.captions && typeof body.captions === 'object' && !Array.isArray(body.captions) ? body.captions : null,
   };
+}
+
+// 지금 있는 사진의 캡션만, 빈 글은 빼고 남깁니다.
+const CAPTION_MAX = 2000;
+function cleanCaptions(caps, images) {
+  const out = {};
+  for (const k of images) {
+    const v = String(caps?.[k] ?? '').trim().slice(0, CAPTION_MAX);
+    if (v) out[k] = v;
+  }
+  return out;
 }
 
 const MAX_FILES = 20;
@@ -373,11 +389,12 @@ async function createItem(request, env, ctx) {
   if (!it.title && !it.images.length && !it.memo && !it.files?.length) return json({ error: '제목, 사진, 메모 중 하나는 있어야 합니다.' }, 400);
   it.artist = await canonicalArtist(env, it.artist);
   it.files = it.files || [];
+  it.captions = cleanCaptions(it.captions, it.images);
   const now = Date.now();
   const id = crypto.randomUUID();
   await env.DB.prepare(
-    'INSERT INTO items (id, title, artist, category, place, visited_at, memo, tags, source, images, files, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-  ).bind(id, it.title, it.artist, it.category, it.place, it.visitedAt, it.memo, JSON.stringify(it.tags), it.source, JSON.stringify(it.images), JSON.stringify(it.files), now, now).run();
+    'INSERT INTO items (id, title, artist, category, place, visited_at, memo, tags, source, images, files, captions, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  ).bind(id, it.title, it.artist, it.category, it.place, it.visitedAt, it.memo, JSON.stringify(it.tags), it.source, JSON.stringify(it.images), JSON.stringify(it.files), JSON.stringify(it.captions), now, now).run();
   const row = await env.DB.prepare('SELECT * FROM items WHERE id = ?').bind(id).first();
   queueArtist(env, ctx, it.artist);
   await queueAnalyzeLater(env, id, body, it.images);
@@ -400,11 +417,12 @@ async function updateItem(request, env, id, ctx) {
   const it = cleanItem(body);
   const oldFiles = safeParse(old.files, []);
   if (!it.files) it.files = oldFiles;
+  it.captions = cleanCaptions(it.captions ?? safeParse(old.captions, {}), it.images);
   if (!it.title && !it.images.length && !it.memo && !it.files.length) return json({ error: '제목, 사진, 메모 중 하나는 있어야 합니다.' }, 400);
   it.artist = await canonicalArtist(env, it.artist, id);
   await env.DB.prepare(
-    'UPDATE items SET title = ?, artist = ?, category = ?, place = ?, visited_at = ?, memo = ?, tags = ?, source = ?, images = ?, files = ?, updated_at = ? WHERE id = ?'
-  ).bind(it.title, it.artist, it.category, it.place, it.visitedAt, it.memo, JSON.stringify(it.tags), it.source, JSON.stringify(it.images), JSON.stringify(it.files), Date.now(), id).run();
+    'UPDATE items SET title = ?, artist = ?, category = ?, place = ?, visited_at = ?, memo = ?, tags = ?, source = ?, images = ?, files = ?, captions = ?, updated_at = ? WHERE id = ?'
+  ).bind(it.title, it.artist, it.category, it.place, it.visitedAt, it.memo, JSON.stringify(it.tags), it.source, JSON.stringify(it.images), JSON.stringify(it.files), JSON.stringify(it.captions), Date.now(), id).run();
   // 수정하면서 뺀 사진·파일은 저장소에서도 지웁니다.
   const removed = safeParse(old.images, []).filter((k) => !it.images.includes(k));
   const removedFiles = oldFiles.map((f) => f.key).filter((k) => !it.files.some((f) => f.key === k));
@@ -894,8 +912,8 @@ async function mergeItems(request, env) {
   const pick = (k) => keep[k] || others.find((o) => o[k])?.[k] || '';
   const visited = [keep, ...others].map((o) => o.visitedAt).filter(Boolean);
   await env.DB.batch([
-    env.DB.prepare('UPDATE items SET images = ?, files = ?, tags = ?, memo = ?, artist = ?, place = ?, visited_at = ?, created_at = ?, updated_at = ? WHERE id = ?')
-      .bind(JSON.stringify(images), JSON.stringify([...keep.files, ...others.flatMap((o) => o.files)].slice(0, MAX_FILES)), JSON.stringify(tags), memo, pick('artist'), pick('place'), visited.length ? Math.min(...visited) : 0,
+    env.DB.prepare('UPDATE items SET captions = ?, images = ?, files = ?, tags = ?, memo = ?, artist = ?, place = ?, visited_at = ?, created_at = ?, updated_at = ? WHERE id = ?')
+      .bind(JSON.stringify(cleanCaptions(Object.assign({}, ...others.map((o) => o.captions), keep.captions), images)), JSON.stringify(images), JSON.stringify([...keep.files, ...others.flatMap((o) => o.files)].slice(0, MAX_FILES)), JSON.stringify(tags), memo, pick('artist'), pick('place'), visited.length ? Math.min(...visited) : 0,
         Math.min(...rows.map((r) => r.createdAt)), Date.now(), keepId),
     ...others.map((o) => env.DB.prepare('DELETE FROM items WHERE id = ?').bind(o.id)),
   ]);
@@ -916,11 +934,16 @@ async function movePhoto(request, env, fromId) {
   if (to.images.length >= MAX_IMAGES) return json({ error: `옮길 항목에 사진이 이미 ${MAX_IMAGES}장이에요.` }, 400);
   const fromImages = from.images.filter((k) => k !== image);
   const now = Date.now();
-  const empty = !fromImages.length && !from.title && !from.memo;
+  const empty = !fromImages.length && !from.title && !from.memo && !from.files.length;
+  // 캡션도 사진을 따라 옮깁니다.
+  const toCaps = { ...to.captions };
+  if (from.captions[image]) toCaps[image] = from.captions[image];
+  const fromCaps = { ...from.captions };
+  delete fromCaps[image];
   await env.DB.batch([
-    env.DB.prepare('UPDATE items SET images = ?, updated_at = ? WHERE id = ?').bind(JSON.stringify([...to.images, image]), now, toId),
+    env.DB.prepare('UPDATE items SET images = ?, captions = ?, updated_at = ? WHERE id = ?').bind(JSON.stringify([...to.images, image]), JSON.stringify(toCaps), now, toId),
     empty ? env.DB.prepare('DELETE FROM items WHERE id = ?').bind(fromId)
-      : env.DB.prepare('UPDATE items SET images = ?, updated_at = ? WHERE id = ?').bind(JSON.stringify(fromImages), now, fromId),
+      : env.DB.prepare('UPDATE items SET images = ?, captions = ?, updated_at = ? WHERE id = ?').bind(JSON.stringify(fromImages), JSON.stringify(fromCaps), now, fromId),
   ]);
   const a = await env.DB.prepare('SELECT * FROM items WHERE id = ?').bind(fromId).first();
   const b = await env.DB.prepare('SELECT * FROM items WHERE id = ?').bind(toId).first();
@@ -1031,7 +1054,7 @@ function analyzePrompt(existing) {
   return [
     '이 사진은 사용자가 아이디어 아카이브에 모으는 레퍼런스입니다. 사진을 보고 아래를 JSON 하나로만 답하세요.',
     '',
-    '- category: "exhibition"(전시·미술관·갤러리·설치작품·작품 사진·전시 포스터), "movie"(영화 장면·스틸컷·영화 포스터·드라마), "etc"(그 외 전부) 중 하나',
+    '- category: "exhibition"(전시·미술관·갤러리·설치작품·작품 사진·전시 포스터), "movie"(영화 장면·스틸컷·영화 포스터·드라마), "photobook"(사진집·사진책의 펼친 면·표지·사진가의 책), "etc"(그 외 전부) 중 하나. 사진집이면 artist 는 사진가, place 는 출판사',
     '- title: 전시면 전시 이름(전시명), 영화면 영화 제목. 알 수 없으면 무엇이 보이는지 짧은 한국어 제목. 개별 작품 이름은 memo 에',
     '- artist: 작가·감독·디자이너 이름. 확실할 때만 쓰고, 모르면 빈 문자열 ""',
     '- place: 전시관·미술관·갤러리 이름(전시일 때), 사진에 글자로 보이거나 확실할 때만. 모르면 ""',
@@ -1168,7 +1191,7 @@ function groupPrompt(existing, dates) {
     '',
     '각 묶음마다:',
     '- photos: 그 묶음에 들어가는 사진 번호 배열 (모든 사진이 정확히 한 묶음에만 들어가야 함)',
-    '- category: "exhibition"(전시·미술관·갤러리), "movie"(영화·드라마), "etc"(그 외) 중 하나',
+    '- category: "exhibition"(전시·미술관·갤러리), "movie"(영화·드라마), "photobook"(사진집·사진책), "etc"(그 외) 중 하나',
     '- title: 전시면 전시 이름, 영화면 영화 제목. 모르면 무엇을 본 것인지 짧은 한국어 제목',
     '- artist: 작가·감독 이름. 확실할 때만, 모르면 ""',
     '- place: 전시관·미술관 이름 (영화는 ""). 사진에 보이거나 확실할 때만, 모르면 ""',

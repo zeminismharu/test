@@ -23,13 +23,14 @@ const state = {
 };
 
 // 분류 키맵: 전시관 · 영화 · 그 외 순서. 키보드 1·2·3 (전체 0)
-const CATS = [['exhibition', '전시관'], ['movie', '영화'], ['etc', '그 외']];
+const CATS = [['exhibition', '전시관'], ['movie', '영화'], ['etc', '그 외'], ['photobook', '사진집']];
 const catLabel = (c) => (CATS.find(([k]) => k === c) || CATS[2])[1];
 // 분류마다 "어디서 봤는지" 칸 이름: 전시관 이름 · 본 곳 · 장소
 const PLACE = {
   exhibition: ['전시관 이름', '예) 리움미술관, 국립현대미술관 서울'],
   movie: ['본 곳', '예) CGV 용산, 넷플릭스'],
   etc: ['장소', '예) 을지로 골목, 성수동 카페'],
+  photobook: ['출판사', '예) MACK, Steidl, 이안북스'],
 };
 
 const SORTS = { new: '최신순', old: '오래된순', title: '제목순', artist: '작가순' };
@@ -155,7 +156,7 @@ function bindStatic() {
     if (e.target.closest('input, textarea') || e.metaKey || e.ctrlKey || e.altKey) return;
     if (e.key === '\\' || e.key === '₩' || e.code === 'Backslash') location.href = '/admin';
     if (e.key === '/') { e.preventDefault(); go('#/'); $('#search').focus(); }
-    if (/^[0-3]$/.test(e.key) && $('#sheet').hidden) {
+    if (new RegExp(`^[0-${CATS.length}]$`).test(e.key) && $('#sheet').hidden) {
       setCat(e.key === '0' ? '' : CATS[Number(e.key) - 1][0]);
       go('#/');
     }
@@ -183,7 +184,7 @@ function resetFilters() {
 
 function matches(item, q) {
   if (!q) return true;
-  const hay = [item.title, item.artist, item.place, item.memo, item.source, ...item.tags].join(' ').toLowerCase();
+  const hay = [item.title, item.artist, item.place, item.memo, item.source, ...item.tags, ...Object.values(item.captions || {})].join(' ').toLowerCase();
   const words = q.toLowerCase().split(/\s+/).filter(Boolean);
   return words.every((w) => {
     if (hay.includes(w.replace(/^#/, ''))) return true;
@@ -1348,7 +1349,7 @@ function renderWorks(a) {
     <p class="hint">그림은 웹에서 찾아 저장한 것이라 작품과 다를 수 있어요. 저작권은 작가에게 있어요.</p>`;
   box.querySelectorAll('.work-img').forEach((b) => (b.onclick = () => {
     const w = works[Number(b.dataset.n)];
-    if (w.image) { $('#viewerImg').src = `/img/${w.image}`; $('#viewer').hidden = false; }
+    if (w.image) { openViewer(`/img/${w.image}`); }
   }));
   box.querySelectorAll('.work-photo').forEach((b) => (b.onclick = () => needLogin(() => {
     const input = document.createElement('input');
@@ -1475,13 +1476,21 @@ function fileRow(f, i, del = false) {
   </li>`;
 }
 
+function openViewer(src, caption = '') {
+  $('#viewerImg').src = src;
+  const c = $('#viewerCap');
+  if (c) { c.textContent = caption || ''; c.hidden = !caption; }
+  $('#viewer').hidden = false;
+}
+
 function openDetail(id) {
   const it = state.items.find((i) => i.id === id);
   if (!it) return;
   const imgs = it.images;
   openSheet(`
     ${imgs.length ? `<div class="carousel ${imgs.length > 1 ? 'multi' : ''}" id="carousel">${imgs.map((k) => `<img src="/img/${k}" alt="" />`).join('')}</div>
-      ${imgs.length > 1 ? `<div class="dots" id="dots">1 / ${imgs.length}</div>` : ''}` : ''}
+      ${imgs.length > 1 ? `<div class="dots" id="dots">1 / ${imgs.length}</div>` : ''}
+      <div class="cap-box" id="capBox"></div>` : ''}
     <span class="detail-cat">${catLabel(it.category)}</span>
     ${it.title ? `<h2 class="detail-title">${esc(it.title)}</h2>` : '<div style="height:8px"></div>'}
     ${it.artist ? `<button class="detail-artist" id="dArtist">${esc(it.artist)} ${ICON.chevron}</button>` : ''}
@@ -1503,10 +1512,41 @@ function openDetail(id) {
 
   const car = $('#carousel');
   if (car) {
-    car.querySelectorAll('img').forEach((img) => (img.onclick = () => { $('#viewerImg').src = img.src; $('#viewer').hidden = false; }));
+    let cur = 0;
+    // 지금 보이는 사진의 캡션 (누르면 쓰기·고치기)
+    const showCap = (editing = false) => {
+      const box = $('#capBox');
+      if (!box) return;
+      const k = it.images[cur];
+      const text = it.captions?.[k] || '';
+      if (editing) {
+        box.innerHTML = `<textarea class="field" id="capText" rows="3" maxlength="2000" placeholder="이 사진이 왜 좋았는지 적어 두세요">${esc(text)}</textarea>
+          <div class="btn-row" style="margin-top:8px"><button class="btn ghost small" id="capCancel" type="button">취소</button><button class="btn small" id="capSave" type="button">저장</button></div>`;
+        $('#capText').focus();
+        $('#capCancel').onclick = () => showCap();
+        $('#capSave').onclick = async () => {
+          setBusy($('#capSave'), true);
+          try {
+            const { item } = await api(`/api/items/${it.id}`, { method: 'PUT', body: { ...it, captions: { ...it.captions, [k]: $('#capText').value } } });
+            state.items = state.items.map((x) => (x.id === it.id ? item : x));
+            it.captions = item.captions;
+            renderAll();
+            showCap();
+          } catch (err) { toast(err.message); setBusy($('#capSave'), false); }
+        };
+        return;
+      }
+      box.innerHTML = text
+        ? `<p class="cap-text">${esc(text)}</p><button class="text-btn small cap-edit" id="capEdit" type="button">캡션 고치기</button>`
+        : `<button class="cap-add" id="capEdit" type="button">${ICON.pencil}이 사진이 왜 좋았는지 적기</button>`;
+      $('#capEdit').onclick = () => needLogin(() => showCap(true));
+    };
+    showCap();
+    car.querySelectorAll('img').forEach((img, i) => (img.onclick = () => openViewer(img.src, it.captions?.[it.images[i]])));
     if (imgs.length > 1) car.addEventListener('scroll', () => {
-      const i = Math.round(car.scrollLeft / (car.firstElementChild.offsetWidth + 8));
-      $('#dots').textContent = `${Math.min(i + 1, imgs.length)} / ${imgs.length}`;
+      const i = Math.min(imgs.length - 1, Math.round(car.scrollLeft / (car.firstElementChild.offsetWidth + 8)));
+      $('#dots').textContent = `${i + 1} / ${imgs.length}`;
+      if (i !== cur && !$('#capText')) { cur = i; showCap(); }
     }, { passive: true });
   }
   if ($('#dPlace')) $('#dPlace').onclick = () => openVenue(it.place);
@@ -1556,6 +1596,7 @@ function openEditor(it = null) {
     newKeys: [], // 이번에 새로 올린 사진·파일 (취소하면 지움)
     uploading: 0,
     files: it ? [...(it.files || [])] : [],
+    captions: { ...(it?.captions || {}) }, // 사진마다 "왜 좋았는지"
   };
   const artistNames = state.artists.map((a) => a.name);
 
@@ -1566,6 +1607,7 @@ function openEditor(it = null) {
         <div class="label-row"><span class="label">사진</span><button type="button" class="ai-fill" id="aiFill" hidden>${ICON.spark}사진으로 채우기</button></div>
         <div class="photos" id="photos"></div>
         <input type="file" id="fileInput" accept="image/*" multiple hidden />
+        <div class="cap-list" id="fCaps"></div>
         <p class="ai-hint" id="aiHint" hidden></p>
       </div>
       <div>
@@ -1631,6 +1673,11 @@ function openEditor(it = null) {
       draft.images.splice(Number(b.dataset.i), 1);
       renderPhotos();
     }));
+    // 사진마다 캡션 칸: 왜 이 사진이 좋았는지
+    const ready = draft.images.filter((k) => !k.startsWith('blob:'));
+    $('#fCaps').innerHTML = ready.length ? `<span class="label" style="margin-top:14px">사진마다 캡션 <span class="hint" style="font-weight:500">이 사진이 왜 좋았는지</span></span>` + ready.map((k) => `
+      <label class="cap-row"><img src="/img/${k}" alt="" /><textarea class="field" data-k="${k}" rows="2" maxlength="2000" placeholder="예) 빛이 벽을 타고 번지는 게 좋았다">${esc(draft.captions[k] || '')}</textarea></label>`).join('') : '';
+    $('#fCaps').querySelectorAll('textarea').forEach((t) => (t.oninput = () => { draft.captions[t.dataset.k] = t.value; }));
   };
   renderPhotos();
 
@@ -1810,6 +1857,7 @@ function openEditor(it = null) {
       tags: draft.tags,
       images: draft.images,
       files: draft.files.filter((f) => f.key),
+      captions: draft.captions,
     };
     if (draft.aiLater && draft.images.includes(draft.aiLater)) Object.assign(body, { aiLater: draft.aiLater, aiRetryAt: draft.aiRetryAt, aiCategory: draft.aiCategory });
     if (!body.title.trim() && !body.memo.trim() && !body.images.length && !body.files.length) return toast('제목, 사진, 메모, 파일 중 하나는 넣어 주세요');

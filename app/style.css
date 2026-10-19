@@ -371,7 +371,7 @@ textarea.field { min-height: 120px; line-height: 1.6; }
 .cat-tab:first-child.on::after { left: 2px; }
 .cat-tab:focus-visible, .seg-big button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 
-.seg-big { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; background: var(--bg-2); padding: 4px; border-radius: 14px; }
+.seg-big { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; background: var(--bg-2); padding: 4px; border-radius: 14px; }
 .seg-big button { height: 44px; border-radius: 11px; font-size: 16px; font-weight: 700; color: var(--text-3); }
 .seg-big button.on { background: var(--bg); color: var(--text); box-shadow: 0 1px 4px rgba(0, 29, 58, .12); }
 
@@ -688,3 +688,15 @@ textarea.field { min-height: 120px; line-height: 1.6; }
 .file-row.uploading { opacity: .6; }
 #fileAdd { display: inline-flex; align-items: center; gap: 6px; }
 #fileAdd svg { width: 18px; height: 18px; }
+
+/* ── 사진 캡션 ── */
+.cap-list { display: flex; flex-direction: column; gap: 8px; }
+.cap-row { display: flex; gap: 10px; align-items: flex-start; }
+.cap-row img { flex: none; width: 56px; height: 56px; border-radius: 10px; object-fit: cover; }
+.cap-row textarea { flex: 1; min-height: 56px; font-size: 15px; }
+.cap-box { margin: 10px 0 4px; }
+.cap-text { margin: 0; padding: 12px 14px; border-radius: 14px; background: var(--bg-2); font-size: 15px; line-height: 1.6; white-space: pre-wrap; }
+.cap-edit { margin-top: 4px; }
+.cap-add { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 12px; background: var(--blue-soft); color: var(--blue); font-size: 14px; font-weight: 700; }
+.cap-add svg { width: 16px; height: 16px; }
+.viewer-cap { position: absolute; left: 16px; right: 16px; bottom: max(20px, env(safe-area-inset-bottom)); margin: 0; padding: 12px 14px; border-radius: 14px; background: rgba(0, 0, 0, .6); color: #fff; font-size: 15px; line-height: 1.6; white-space: pre-wrap; max-height: 40vh; overflow: auto; }
